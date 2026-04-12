@@ -1,0 +1,5 @@
+{
+  "name": "StockMaster AI",
+  "description": "Gestión de inventario inteligente con predicciones de stock y sugerencias de reposición impulsadas por IA.",
+  "requestFramePermissions": []
+}
