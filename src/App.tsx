@@ -84,11 +84,11 @@ import { getAIReplenishmentSuggestions, getAIBusinessAnalysis } from "./lib/inve
 
 // Sample Data
 const INITIAL_PRODUCTS: Product[] = [
-  { id: "1", name: "Leche Entera 1L", code: "LEC001", brand: "Colun", price: 1.2, quantity: 45, category: "Lácteos", minStockLevel: 10, lastUpdated: new Date().toISOString() },
-  { id: "2", name: "Pan de Molde", code: "PAN002", brand: "Ideal", price: 2.5, quantity: 8, category: "Panadería", minStockLevel: 15, lastUpdated: new Date().toISOString() },
-  { id: "3", name: "Arroz Extra 1kg", code: "ARR003", brand: "Tucapel", price: 1.8, quantity: 60, category: "Despensa", minStockLevel: 20, lastUpdated: new Date().toISOString() },
-  { id: "4", name: "Detergente Líquido", code: "DET004", brand: "Omo", price: 8.5, quantity: 5, category: "Limpieza", minStockLevel: 8, lastUpdated: new Date().toISOString() },
-  { id: "5", name: "Café Molido 250g", code: "CAF005", brand: "Nescafé", price: 4.2, quantity: 25, category: "Despensa", minStockLevel: 10, lastUpdated: new Date().toISOString() },
+  { id: "1", name: "Leche Entera 1L", code: "LEC001", brand: "Colun", price: 4200, quantity: 45, category: "Lácteos", minStockLevel: 10, lastUpdated: new Date().toISOString() },
+  { id: "2", name: "Pan de Molde", code: "PAN002", brand: "Ideal", price: 6500, quantity: 8, category: "Panadería", minStockLevel: 15, lastUpdated: new Date().toISOString() },
+  { id: "3", name: "Arroz Extra 1kg", code: "ARR003", brand: "Tucapel", price: 3800, quantity: 60, category: "Despensa", minStockLevel: 20, lastUpdated: new Date().toISOString() },
+  { id: "4", name: "Detergente Líquido", code: "DET004", brand: "Omo", price: 24500, quantity: 5, category: "Limpieza", minStockLevel: 8, lastUpdated: new Date().toISOString() },
+  { id: "5", name: "Café Molido 250g", code: "CAF005", brand: "Nescafé", price: 12900, quantity: 25, category: "Despensa", minStockLevel: 10, lastUpdated: new Date().toISOString() },
 ];
 
 const INITIAL_SALES: SaleRecord[] = [
@@ -96,86 +96,86 @@ const INITIAL_SALES: SaleRecord[] = [
   { 
     id: "s_today_1", 
     items: [
-      { productId: "1", productName: "Leche Entera 1L", quantity: 3, unitPrice: 1.2, totalPrice: 3.6 },
-      { productId: "2", productName: "Pan de Molde", quantity: 1, unitPrice: 2.5, totalPrice: 2.5 }
+      { productId: "1", productName: "Leche Entera 1L", quantity: 3, unitPrice: 4200, totalPrice: 12600 },
+      { productId: "2", productName: "Pan de Molde", quantity: 1, unitPrice: 6500, totalPrice: 6500 }
     ], 
-    totalAmount: 6.1, 
+    totalAmount: 19100, 
     date: new Date().toISOString() 
   },
   { 
     id: "s_today_2", 
     items: [
-      { productId: "3", productName: "Arroz Extra 1kg", quantity: 2, unitPrice: 1.8, totalPrice: 3.6 },
-      { productId: "5", productName: "Café Molido 250g", quantity: 1, unitPrice: 4.2, totalPrice: 4.2 }
+      { productId: "3", productName: "Arroz Extra 1kg", quantity: 2, unitPrice: 3800, totalPrice: 7600 },
+      { productId: "5", productName: "Café Molido 250g", quantity: 1, unitPrice: 12900, totalPrice: 12900 }
     ], 
-    totalAmount: 7.8, 
+    totalAmount: 20500, 
     date: new Date(Date.now() - 3600000 * 2).toISOString() 
   },
   // Ayer
   { 
     id: "s_yest_1", 
     items: [
-      { productId: "4", productName: "Detergente Líquido", quantity: 1, unitPrice: 8.5, totalPrice: 8.5 },
-      { productId: "1", productName: "Leche Entera 1L", quantity: 6, unitPrice: 1.2, totalPrice: 7.2 }
+      { productId: "4", productName: "Detergente Líquido", quantity: 1, unitPrice: 24500, totalPrice: 24500 },
+      { productId: "1", productName: "Leche Entera 1L", quantity: 6, unitPrice: 4200, totalPrice: 25200 }
     ], 
-    totalAmount: 15.7, 
+    totalAmount: 49700, 
     date: new Date(Date.now() - 86400000).toISOString() 
   },
   { 
     id: "s_yest_2", 
     items: [
-      { productId: "2", productName: "Pan de Molde", quantity: 4, unitPrice: 2.5, totalPrice: 10.0 }
+      { productId: "2", productName: "Pan de Molde", quantity: 4, unitPrice: 6500, totalPrice: 26000 }
     ], 
-    totalAmount: 10.0, 
+    totalAmount: 26000, 
     date: new Date(Date.now() - 86400000 - 3600000 * 5).toISOString() 
   },
   // Hace 2 días
   { 
     id: "s_2d_1", 
     items: [
-      { productId: "3", productName: "Arroz Extra 1kg", quantity: 10, unitPrice: 1.8, totalPrice: 18.0 },
-      { productId: "1", productName: "Leche Entera 1L", quantity: 4, unitPrice: 1.2, totalPrice: 4.8 }
+      { productId: "3", productName: "Arroz Extra 1kg", quantity: 10, unitPrice: 3800, totalPrice: 38000 },
+      { productId: "1", productName: "Leche Entera 1L", quantity: 4, unitPrice: 4200, totalPrice: 16800 }
     ], 
-    totalAmount: 22.8, 
+    totalAmount: 54800, 
     date: new Date(Date.now() - 86400000 * 2).toISOString() 
   },
   // Hace 3 días
   { 
     id: "s_3d_1", 
     items: [
-      { productId: "5", productName: "Café Molido 250g", quantity: 3, unitPrice: 4.2, totalPrice: 12.6 },
-      { productId: "2", productName: "Pan de Molde", quantity: 2, unitPrice: 2.5, totalPrice: 5.0 }
+      { productId: "5", productName: "Café Molido 250g", quantity: 3, unitPrice: 12900, totalPrice: 38700 },
+      { productId: "2", productName: "Pan de Molde", quantity: 2, unitPrice: 6500, totalPrice: 13000 }
     ], 
-    totalAmount: 17.6, 
+    totalAmount: 51700, 
     date: new Date(Date.now() - 86400000 * 3).toISOString() 
   },
   // Hace 4 días
   { 
     id: "s_4d_1", 
     items: [
-      { productId: "1", productName: "Leche Entera 1L", quantity: 12, unitPrice: 1.2, totalPrice: 14.4 }
+      { productId: "1", productName: "Leche Entera 1L", quantity: 12, unitPrice: 4200, totalPrice: 50400 }
     ], 
-    totalAmount: 14.4, 
+    totalAmount: 50400, 
     date: new Date(Date.now() - 86400000 * 4).toISOString() 
   },
   // Hace 5 días
   { 
     id: "s_5d_1", 
     items: [
-      { productId: "4", productName: "Detergente Líquido", quantity: 2, unitPrice: 8.5, totalPrice: 17.0 },
-      { productId: "3", productName: "Arroz Extra 1kg", quantity: 5, unitPrice: 1.8, totalPrice: 9.0 }
+      { productId: "4", productName: "Detergente Líquido", quantity: 2, unitPrice: 24500, totalPrice: 49000 },
+      { productId: "3", productName: "Arroz Extra 1kg", quantity: 5, unitPrice: 3800, totalPrice: 19000 }
     ], 
-    totalAmount: 26.0, 
+    totalAmount: 68000, 
     date: new Date(Date.now() - 86400000 * 5).toISOString() 
   },
   // Hace 6 días
   { 
     id: "s_6d_1", 
     items: [
-      { productId: "2", productName: "Pan de Molde", quantity: 8, unitPrice: 2.5, totalPrice: 20.0 },
-      { productId: "1", productName: "Leche Entera 1L", quantity: 2, unitPrice: 1.2, totalPrice: 2.4 }
+      { productId: "2", productName: "Pan de Molde", quantity: 8, unitPrice: 6500, totalPrice: 52000 },
+      { productId: "1", productName: "Leche Entera 1L", quantity: 2, unitPrice: 4200, totalPrice: 8400 }
     ], 
-    totalAmount: 22.4, 
+    totalAmount: 60400, 
     date: new Date(Date.now() - 86400000 * 6).toISOString() 
   },
 ];
@@ -187,16 +187,36 @@ const generateProductCode = (name: string) => {
   return `${prefix}${random}`;
 };
 
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
 export default function App() {
   const [products, setProducts] = useState<Product[]>(() => {
     const saved = localStorage.getItem("inventory_products");
     const initial = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-    // Migration: ensure all products have a code and brand
-    return initial.map((p: Product) => ({
-      ...p,
-      code: p.code || generateProductCode(p.name),
-      brand: p.brand || "Genérico"
-    }));
+    // Migration: ensure all products have a code, brand and COP prices
+    return initial.map((p: Product) => {
+      // Fix low prices (likely USD) to COP
+      let price = p.price;
+      if (price < 100) {
+        // Try to find in INITIAL_PRODUCTS first
+        const initialP = INITIAL_PRODUCTS.find(ip => ip.id === p.id);
+        price = initialP ? initialP.price : price * 4000;
+      }
+
+      return {
+        ...p,
+        price: price,
+        code: p.code || generateProductCode(p.name),
+        brand: p.brand || "Genérico"
+      };
+    });
   });
   const [sales, setSales] = useState<SaleRecord[]>(() => {
     const saved = localStorage.getItem("inventory_sales");
@@ -210,15 +230,23 @@ export default function App() {
 
     // Migration: ensure all sales have items array and valid data
     return initial.map((s: any) => {
+      // Helper to fix low prices (likely old USD data)
+      const fixPrice = (price: number, productId: string) => {
+        if (price > 100) return price; // Already COP
+        const p = lookupProducts.find((lp: any) => lp.id === productId);
+        return p?.price || price * 4000; // Fallback to 4000 rate if not found
+      };
+
       if (s.items && Array.isArray(s.items)) {
         // Ensure item names and prices are populated if they are generic or 0
         const updatedItems = s.items.map((item: any) => {
           const p = lookupProducts.find((lp: any) => lp.id === item.productId);
+          const unitPrice = fixPrice(item.unitPrice || 0, item.productId);
           return {
             ...item,
             productName: item.productName === "Producto" || !item.productName ? (p?.name || "Producto") : item.productName,
-            unitPrice: item.unitPrice || p?.price || 0,
-            totalPrice: item.totalPrice || (item.quantity * (p?.price || 0)) || 0
+            unitPrice: unitPrice,
+            totalPrice: unitPrice * item.quantity
           };
         });
 
@@ -226,14 +254,14 @@ export default function App() {
         return {
           ...s,
           items: updatedItems,
-          totalAmount: s.totalAmount || calculatedTotal || 0
+          totalAmount: calculatedTotal || 0
         };
       }
       
       // Convert old structure to new
       const qty = s.quantity || 0;
       const product = lookupProducts.find((p: any) => p.id === s.productId);
-      const price = product?.price || 0;
+      const price = fixPrice(product?.price || 0, s.productId);
       const total = qty * price;
 
       return {
@@ -742,7 +770,7 @@ export default function App() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard 
                   title="Ingresos Hoy" 
-                  value={`$${analytics.todayRevenue.toFixed(2)}`} 
+                  value={formatCurrency(analytics.todayRevenue)} 
                   icon={<TrendingUp className="text-emerald-600" />}
                   trend={`${analytics.revenueChange >= 0 ? '+' : ''}${analytics.revenueChange.toFixed(1)}%`}
                   trendUp={analytics.revenueChange >= 0}
@@ -750,7 +778,7 @@ export default function App() {
                 />
                 <StatCard 
                   title="Ingresos Semana" 
-                  value={`$${analytics.thisWeekRevenue.toFixed(2)}`} 
+                  value={formatCurrency(analytics.thisWeekRevenue)} 
                   icon={<DollarSign className="text-indigo-600" />}
                   trend={`${analytics.weekChange >= 0 ? '+' : ''}${analytics.weekChange.toFixed(1)}%`}
                   trendUp={analytics.weekChange >= 0}
@@ -884,7 +912,7 @@ export default function App() {
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-bold text-slate-700">{p.totalQty} ud.</p>
-                            <p className="text-[10px] text-emerald-600 font-medium">${p.totalRev.toFixed(2)}</p>
+                            <p className="text-[10px] text-emerald-600 font-medium">{formatCurrency(p.totalRev)}</p>
                           </div>
                         </div>
                       ))}
@@ -959,7 +987,7 @@ export default function App() {
                               {product.category}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-semibold text-slate-700">${product.price.toFixed(2)}</TableCell>
+                          <TableCell className="font-semibold text-slate-700">{formatCurrency(product.price)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2 text-slate-500">
                               <AlertTriangle size={14} className="text-amber-500" />
@@ -1368,12 +1396,12 @@ export default function App() {
                       />
                       <StatCard 
                         title="Ingresos Totales" 
-                        value={`$${totalRevenue.toFixed(2)}`} 
+                        value={formatCurrency(totalRevenue)} 
                         icon={<DollarSign className="text-emerald-600" />}
                       />
                       <StatCard 
                         title="Promedio por Venta" 
-                        value={`$${filteredSales.length ? (totalRevenue / filteredSales.length).toFixed(2) : "0.00"}`} 
+                        value={formatCurrency(filteredSales.length ? (totalRevenue / filteredSales.length) : 0)} 
                         icon={<TrendingUp className="text-indigo-600" />}
                       />
                     </div>
@@ -1416,7 +1444,7 @@ export default function App() {
                                         </TableCell>
                                         <TableCell>{(sale.items || []).reduce((acc, i) => acc + i.quantity, 0)}</TableCell>
                                         <TableCell className="text-right font-semibold">
-                                          ${sale.totalAmount.toFixed(2)}
+                                          {formatCurrency(sale.totalAmount)}
                                         </TableCell>
                                       </TableRow>
                                     );
@@ -1465,7 +1493,7 @@ export default function App() {
                                         <TableCell className="font-medium">{new Date(group.date).toLocaleDateString()}</TableCell>
                                         <TableCell>{group.units}</TableCell>
                                         <TableCell className="text-right font-bold text-indigo-600">
-                                          ${group.total.toFixed(2)}
+                                          {formatCurrency(group.total)}
                                         </TableCell>
                                       </TableRow>
                                     ))}
@@ -1621,7 +1649,7 @@ export default function App() {
                                   </Badge>
                                 </div>
                                 <div className="flex justify-between items-center mt-4">
-                                  <span className="text-lg font-bold text-indigo-600">${product.price.toFixed(2)}</span>
+                                  <span className="text-lg font-bold text-indigo-600">{formatCurrency(product.price)}</span>
                                   <Button 
                                     size="sm" 
                                     disabled={product.quantity <= 0}
@@ -1660,8 +1688,8 @@ export default function App() {
                               <div className="flex-1">
                                 <h5 className="text-sm font-medium text-slate-900">{item.productName}</h5>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <span className="text-xs text-slate-500">${item.unitPrice.toFixed(2)} x {item.quantity}</span>
-                                  <span className="text-xs font-bold text-indigo-600">${item.totalPrice.toFixed(2)}</span>
+                                  <span className="text-xs text-slate-500">{formatCurrency(item.unitPrice)} x {item.quantity}</span>
+                                  <span className="text-xs font-bold text-indigo-600">{formatCurrency(item.totalPrice)}</span>
                                 </div>
                               </div>
                               <Button 
@@ -1683,7 +1711,7 @@ export default function App() {
                         <div className="flex justify-between items-center">
                           <span className="text-slate-600 font-medium">Total a Pagar</span>
                           <span className="text-2xl font-bold text-slate-900">
-                            ${cart.reduce((acc, item) => acc + item.totalPrice, 0).toFixed(2)}
+                            {formatCurrency(cart.reduce((acc, item) => acc + item.totalPrice, 0))}
                           </span>
                         </div>
                         <Button 
