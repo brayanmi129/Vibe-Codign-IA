@@ -10,10 +10,18 @@ export interface Product {
   lastUpdated: string;
 }
 
+export interface SaleItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
 export interface SaleRecord {
   id: string;
-  productId: string;
-  quantity: number;
+  items: SaleItem[];
+  totalAmount: number;
   date: string;
 }
 

@@ -79,7 +79,7 @@ import {
   Line,
   Cell
 } from "recharts";
-import { Product, SaleRecord, InventoryStats, AIInsight, RestockRecord } from "./types";
+import { Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord } from "./types";
 import { getAIReplenishmentSuggestions, getAIBusinessAnalysis } from "./lib/inventoryService";
 
 // Sample Data
@@ -92,11 +92,92 @@ const INITIAL_PRODUCTS: Product[] = [
 ];
 
 const INITIAL_SALES: SaleRecord[] = [
-  { id: "s1", productId: "1", quantity: 5, date: new Date(Date.now() - 86400000 * 1).toISOString() },
-  { id: "s2", productId: "2", quantity: 12, date: new Date(Date.now() - 86400000 * 1).toISOString() },
-  { id: "s3", productId: "4", quantity: 3, date: new Date(Date.now() - 86400000 * 2).toISOString() },
-  { id: "s4", productId: "1", quantity: 8, date: new Date(Date.now() - 86400000 * 3).toISOString() },
-  { id: "s5", productId: "3", quantity: 15, date: new Date(Date.now() - 86400000 * 4).toISOString() },
+  // Hoy
+  { 
+    id: "s_today_1", 
+    items: [
+      { productId: "1", productName: "Leche Entera 1L", quantity: 3, unitPrice: 1.2, totalPrice: 3.6 },
+      { productId: "2", productName: "Pan de Molde", quantity: 1, unitPrice: 2.5, totalPrice: 2.5 }
+    ], 
+    totalAmount: 6.1, 
+    date: new Date().toISOString() 
+  },
+  { 
+    id: "s_today_2", 
+    items: [
+      { productId: "3", productName: "Arroz Extra 1kg", quantity: 2, unitPrice: 1.8, totalPrice: 3.6 },
+      { productId: "5", productName: "Café Molido 250g", quantity: 1, unitPrice: 4.2, totalPrice: 4.2 }
+    ], 
+    totalAmount: 7.8, 
+    date: new Date(Date.now() - 3600000 * 2).toISOString() 
+  },
+  // Ayer
+  { 
+    id: "s_yest_1", 
+    items: [
+      { productId: "4", productName: "Detergente Líquido", quantity: 1, unitPrice: 8.5, totalPrice: 8.5 },
+      { productId: "1", productName: "Leche Entera 1L", quantity: 6, unitPrice: 1.2, totalPrice: 7.2 }
+    ], 
+    totalAmount: 15.7, 
+    date: new Date(Date.now() - 86400000).toISOString() 
+  },
+  { 
+    id: "s_yest_2", 
+    items: [
+      { productId: "2", productName: "Pan de Molde", quantity: 4, unitPrice: 2.5, totalPrice: 10.0 }
+    ], 
+    totalAmount: 10.0, 
+    date: new Date(Date.now() - 86400000 - 3600000 * 5).toISOString() 
+  },
+  // Hace 2 días
+  { 
+    id: "s_2d_1", 
+    items: [
+      { productId: "3", productName: "Arroz Extra 1kg", quantity: 10, unitPrice: 1.8, totalPrice: 18.0 },
+      { productId: "1", productName: "Leche Entera 1L", quantity: 4, unitPrice: 1.2, totalPrice: 4.8 }
+    ], 
+    totalAmount: 22.8, 
+    date: new Date(Date.now() - 86400000 * 2).toISOString() 
+  },
+  // Hace 3 días
+  { 
+    id: "s_3d_1", 
+    items: [
+      { productId: "5", productName: "Café Molido 250g", quantity: 3, unitPrice: 4.2, totalPrice: 12.6 },
+      { productId: "2", productName: "Pan de Molde", quantity: 2, unitPrice: 2.5, totalPrice: 5.0 }
+    ], 
+    totalAmount: 17.6, 
+    date: new Date(Date.now() - 86400000 * 3).toISOString() 
+  },
+  // Hace 4 días
+  { 
+    id: "s_4d_1", 
+    items: [
+      { productId: "1", productName: "Leche Entera 1L", quantity: 12, unitPrice: 1.2, totalPrice: 14.4 }
+    ], 
+    totalAmount: 14.4, 
+    date: new Date(Date.now() - 86400000 * 4).toISOString() 
+  },
+  // Hace 5 días
+  { 
+    id: "s_5d_1", 
+    items: [
+      { productId: "4", productName: "Detergente Líquido", quantity: 2, unitPrice: 8.5, totalPrice: 17.0 },
+      { productId: "3", productName: "Arroz Extra 1kg", quantity: 5, unitPrice: 1.8, totalPrice: 9.0 }
+    ], 
+    totalAmount: 26.0, 
+    date: new Date(Date.now() - 86400000 * 5).toISOString() 
+  },
+  // Hace 6 días
+  { 
+    id: "s_6d_1", 
+    items: [
+      { productId: "2", productName: "Pan de Molde", quantity: 8, unitPrice: 2.5, totalPrice: 20.0 },
+      { productId: "1", productName: "Leche Entera 1L", quantity: 2, unitPrice: 1.2, totalPrice: 2.4 }
+    ], 
+    totalAmount: 22.4, 
+    date: new Date(Date.now() - 86400000 * 6).toISOString() 
+  },
 ];
 
 // Helper to generate a product code
@@ -119,7 +200,55 @@ export default function App() {
   });
   const [sales, setSales] = useState<SaleRecord[]>(() => {
     const saved = localStorage.getItem("inventory_sales");
-    return saved ? JSON.parse(saved) : INITIAL_SALES;
+    const initial = saved ? JSON.parse(saved) : INITIAL_SALES;
+    
+    // Use INITIAL_PRODUCTS for lookup during migration because 'products' state isn't ready yet
+    const lookupProducts = (() => {
+      const savedProducts = localStorage.getItem("inventory_products");
+      return savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS;
+    })();
+
+    // Migration: ensure all sales have items array and valid data
+    return initial.map((s: any) => {
+      if (s.items && Array.isArray(s.items)) {
+        // Ensure item names and prices are populated if they are generic or 0
+        const updatedItems = s.items.map((item: any) => {
+          const p = lookupProducts.find((lp: any) => lp.id === item.productId);
+          return {
+            ...item,
+            productName: item.productName === "Producto" || !item.productName ? (p?.name || "Producto") : item.productName,
+            unitPrice: item.unitPrice || p?.price || 0,
+            totalPrice: item.totalPrice || (item.quantity * (p?.price || 0)) || 0
+          };
+        });
+
+        const calculatedTotal = updatedItems.reduce((sum: number, item: any) => sum + (item.totalPrice || 0), 0);
+        return {
+          ...s,
+          items: updatedItems,
+          totalAmount: s.totalAmount || calculatedTotal || 0
+        };
+      }
+      
+      // Convert old structure to new
+      const qty = s.quantity || 0;
+      const product = lookupProducts.find((p: any) => p.id === s.productId);
+      const price = product?.price || 0;
+      const total = qty * price;
+
+      return {
+        id: s.id || Math.random().toString(36).substr(2, 9),
+        items: [{
+          productId: s.productId || "unknown",
+          productName: product?.name || "Producto",
+          quantity: qty,
+          unitPrice: price,
+          totalPrice: total
+        }],
+        totalAmount: total,
+        date: s.date || new Date().toISOString()
+      };
+    });
   });
   const [restocks, setRestocks] = useState<RestockRecord[]>(() => {
     const saved = localStorage.getItem("inventory_restocks");
@@ -133,6 +262,7 @@ export default function App() {
   const [aiInsights, setAiInsights] = useState<AIInsight[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [inventoryTab, setInventoryTab] = useState<"status" | "restock">("status");
+  const [cart, setCart] = useState<SaleItem[]>([]);
 
   // Sales Filter State
   const [salesDateFilter, setSalesDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -155,10 +285,8 @@ export default function App() {
     const todaySales = getSalesForDate(todayStr);
     const yesterdaySales = getSalesForDate(yesterdayStr);
 
-    const calculateRevenue = (records: SaleRecord[]) => records.reduce((acc, s) => {
-      const p = products.find(prod => prod.id === s.productId);
-      return acc + (p ? p.price * s.quantity : 0);
-    }, 0);
+    const calculateRevenue = (records: SaleRecord[]) => records.reduce((acc, s) => acc + s.totalAmount, 0);
+    const calculateUnits = (records: SaleRecord[]) => records.reduce((acc, s) => acc + (s.items || []).reduce((sum, item) => sum + item.quantity, 0), 0);
 
     const todayRevenue = calculateRevenue(todaySales);
     const yesterdayRevenue = calculateRevenue(yesterdaySales);
@@ -182,8 +310,10 @@ export default function App() {
 
     // Top Products
     const productPerformance = products.map(p => {
-      const pSales = sales.filter(s => s.productId === p.id);
-      const totalQty = pSales.reduce((acc, s) => acc + s.quantity, 0);
+      const totalQty = sales.reduce((acc, s) => {
+        const item = (s.items || []).find(i => i.productId === p.id);
+        return acc + (item ? item.quantity : 0);
+      }, 0);
       const totalRev = totalQty * p.price;
       return { ...p, totalQty, totalRev };
     });
@@ -198,8 +328,11 @@ export default function App() {
     const threeDaysAgo = new Date(now);
     threeDaysAgo.setDate(now.getDate() - 3);
     products.forEach(p => {
-      const recentSales = sales.filter(s => s.productId === p.id && new Date(s.date) >= threeDaysAgo);
-      const totalRecent = recentSales.reduce((acc, s) => acc + s.quantity, 0);
+      const totalRecent = sales.reduce((acc, s) => {
+        if (new Date(s.date) < threeDaysAgo) return acc;
+        const item = (s.items || []).find(i => i.productId === p.id);
+        return acc + (item ? item.quantity : 0);
+      }, 0);
       if (totalRecent > 10) {
         notifications.push({
           id: `high-demand-${p.id}`,
@@ -215,8 +348,11 @@ export default function App() {
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(now.getDate() - 7);
     products.forEach(p => {
-      const recentSales = sales.filter(s => s.productId === p.id && new Date(s.date) >= sevenDaysAgo);
-      if (recentSales.length === 0 && p.quantity > 0) {
+      const hasRecentSales = sales.some(s => 
+        new Date(s.date) >= sevenDaysAgo && 
+        (s.items || []).some(i => i.productId === p.id)
+      );
+      if (!hasRecentSales && p.quantity > 0) {
         notifications.push({
           id: `no-movement-${p.id}`,
           type: 'no-movement',
@@ -332,6 +468,76 @@ export default function App() {
   };
 
   // Product Handlers
+  const handleConfirmSale = () => {
+    if (cart.length === 0) return;
+
+    const newSale: SaleRecord = {
+      id: `s${Date.now()}`,
+      items: [...cart],
+      totalAmount: cart.reduce((acc, item) => acc + item.totalPrice, 0),
+      date: new Date().toISOString(),
+    };
+
+    // Update stock
+    const updatedProducts = products.map(p => {
+      const cartItem = cart.find(item => item.productId === p.id);
+      if (cartItem) {
+        return { ...p, quantity: p.quantity - cartItem.quantity, lastUpdated: new Date().toISOString() };
+      }
+      return p;
+    });
+
+    setProducts(updatedProducts);
+    setSales(prev => [newSale, ...prev]);
+    setCart([]);
+    toast.success("Venta registrada con éxito");
+    setActiveTab("sales");
+  };
+
+  const addToCart = (product: Product, quantity: number) => {
+    if (quantity <= 0) return;
+    if (quantity > product.quantity) {
+      toast.error(`Stock insuficiente para ${product.name}`);
+      return;
+    }
+
+    const existingItem = cart.find(item => item.productId === product.id);
+    if (existingItem) {
+      const newQuantity = existingItem.quantity + quantity;
+      if (newQuantity > product.quantity) {
+        toast.error(`Stock insuficiente para ${product.name}`);
+        return;
+      }
+      setCart(cart.map(item => 
+        item.productId === product.id 
+          ? { ...item, quantity: newQuantity, totalPrice: newQuantity * item.unitPrice }
+          : item
+      ));
+    } else {
+      setCart([...cart, {
+        productId: product.id,
+        productName: product.name,
+        quantity,
+        unitPrice: product.price,
+        totalPrice: quantity * product.price
+      }]);
+    }
+    toast.success(`${product.name} añadido al carrito`);
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart(cart.filter(item => item.productId !== productId));
+  };
+
+  const handleResetData = () => {
+    if (window.confirm("¿Estás seguro de que quieres restablecer los datos de demostración? Se perderán todos los cambios actuales.")) {
+      localStorage.removeItem("inventory_products");
+      localStorage.removeItem("inventory_sales");
+      localStorage.removeItem("inventory_restocks");
+      window.location.reload();
+    }
+  };
+
   const handleAddProduct = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -364,23 +570,6 @@ export default function App() {
     toast.success("Producto eliminado");
   };
 
-  const handleSimulateSale = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (product && product.quantity > 0) {
-      setProducts(products.map(p => p.id === productId ? { ...p, quantity: p.quantity - 1 } : p));
-      const newSale: SaleRecord = {
-        id: Math.random().toString(36).substr(2, 9),
-        productId,
-        quantity: 1,
-        date: new Date().toISOString(),
-      };
-      setSales([...sales, newSale]);
-      toast.info(`Venta registrada: ${product.name}`);
-    } else {
-      toast.error("Sin stock disponible");
-    }
-  };
-
   // Chart Data
   const stockByCategoryData = useMemo(() => {
     const data: Record<string, number> = {};
@@ -399,7 +588,7 @@ export default function App() {
 
     return last7Days.map(date => {
       const daySales = sales.filter(s => s.date.startsWith(date));
-      const total = daySales.reduce((acc, s) => acc + s.quantity, 0);
+      const total = daySales.reduce((acc, s) => acc + s.items.reduce((sum, item) => sum + item.quantity, 0), 0);
       return { date: date.split('-').slice(1).join('/'), sales: total };
     });
   }, [sales]);
@@ -437,6 +626,12 @@ export default function App() {
             label="Productos"
           />
           <NavItem 
+            active={activeTab === "new-sale"} 
+            onClick={() => setActiveTab("new-sale")}
+            icon={<Plus size={20} />}
+            label="Nueva Venta"
+          />
+          <NavItem 
             active={activeTab === "sales"} 
             onClick={() => setActiveTab("sales")}
             icon={<ShoppingCart size={20} />}
@@ -459,12 +654,18 @@ export default function App() {
               {activeTab === "dashboard" ? "Resumen de Negocio" : 
                activeTab === "inventory" ? "Control de Inventario" : 
                activeTab === "products" ? "Catálogo de Productos" :
+               activeTab === "new-sale" ? "Nueva Venta" :
                activeTab === "sales" ? "Reporte de Ventas" :
                "Inteligencia Artificial"}
             </h2>
             <p className="text-slate-500 text-sm">Bienvenido de nuevo, aquí está lo que sucede hoy.</p>
           </div>
           <div className="flex gap-3">
+            {activeTab === "dashboard" && (
+              <Button variant="ghost" className="text-slate-400 hover:text-indigo-600" onClick={handleResetData}>
+                <RefreshCw size={16} className="mr-2" /> Reset Demo
+              </Button>
+            )}
             <Button variant="outline" className="bg-white" onClick={() => window.location.reload()}>
               <RefreshCw size={16} className="mr-2" /> Refrescar
             </Button>
@@ -1154,12 +1355,8 @@ export default function App() {
                   }
                 });
 
-                const totalRevenue = filteredSales.reduce((acc, s) => {
-                  const p = products.find(prod => prod.id === s.productId);
-                  return acc + (p ? p.price * s.quantity : 0);
-                }, 0);
-
-                const totalUnits = filteredSales.reduce((acc, s) => acc + s.quantity, 0);
+                const totalRevenue = filteredSales.reduce((acc, s) => acc + s.totalAmount, 0);
+                const totalUnits = filteredSales.reduce((acc, s) => acc + s.items.reduce((sum, item) => sum + item.quantity, 0), 0);
 
                 return (
                   <>
@@ -1202,16 +1399,24 @@ export default function App() {
                                 {filteredSales
                                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                                   .map((sale) => {
-                                    const product = products.find(p => p.id === sale.productId);
                                     return (
                                       <TableRow key={sale.id}>
-                                        <TableCell className="font-medium">{product?.name || "Desconocido"}</TableCell>
+                                        <TableCell className="font-medium">
+                                          <div className="flex flex-col gap-1">
+                                            {(sale.items || []).map((item, idx) => (
+                                              <div key={idx} className="text-xs">
+                                                <span className="font-semibold">{item.productName}</span>
+                                                <span className="text-slate-500 ml-1">x{item.quantity}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </TableCell>
                                         <TableCell className="text-slate-500 text-xs">
                                           {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </TableCell>
-                                        <TableCell>{sale.quantity}</TableCell>
+                                        <TableCell>{(sale.items || []).reduce((acc, i) => acc + i.quantity, 0)}</TableCell>
                                         <TableCell className="text-right font-semibold">
-                                          ${(sale.quantity * (product?.price || 0)).toFixed(2)}
+                                          ${sale.totalAmount.toFixed(2)}
                                         </TableCell>
                                       </TableRow>
                                     );
@@ -1238,9 +1443,8 @@ export default function App() {
                               const grouped = filteredSales.reduce((acc, s) => {
                                 const date = s.date.split('T')[0];
                                 if (!acc[date]) acc[date] = { date, total: 0, units: 0 };
-                                const p = products.find(prod => prod.id === s.productId);
-                                acc[date].total += (p ? p.price * s.quantity : 0);
-                                acc[date].units += s.quantity;
+                                acc[date].total += s.totalAmount;
+                                acc[date].units += (s.items || []).reduce((sum, item) => sum + item.quantity, 0);
                                 return acc;
                               }, {} as Record<string, any>);
 
@@ -1367,6 +1571,131 @@ export default function App() {
                     </div>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === "new-sale" && (
+            <motion.div 
+              key="new-sale"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Product Selection */}
+                <Card className="lg:col-span-2 bg-white border-slate-200 shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-bold">Seleccionar Productos</CardTitle>
+                    <CardDescription>Busca y añade productos a la venta actual.</CardDescription>
+                    <div className="relative mt-2">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <Input 
+                        placeholder="Buscar por nombre, marca o código..." 
+                        className="pl-10"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[500px] pr-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {products
+                          .filter(p => 
+                            p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            p.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            p.code.toLowerCase().includes(searchTerm.toLowerCase())
+                          )
+                          .map(product => (
+                            <Card key={product.id} className="border-slate-100 hover:border-indigo-200 transition-colors">
+                              <CardContent className="p-4">
+                                <div className="flex justify-between items-start mb-2">
+                                  <div>
+                                    <h4 className="font-bold text-slate-900">{product.name}</h4>
+                                    <p className="text-xs text-slate-500">{product.brand} • {product.code}</p>
+                                  </div>
+                                  <Badge variant={product.quantity > product.minStockLevel ? "secondary" : "destructive"}>
+                                    Stock: {product.quantity}
+                                  </Badge>
+                                </div>
+                                <div className="flex justify-between items-center mt-4">
+                                  <span className="text-lg font-bold text-indigo-600">${product.price.toFixed(2)}</span>
+                                  <Button 
+                                    size="sm" 
+                                    disabled={product.quantity <= 0}
+                                    onClick={() => addToCart(product, 1)}
+                                    className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-none"
+                                  >
+                                    <Plus size={14} className="mr-1" /> Añadir
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+
+                {/* Cart Summary */}
+                <Card className="bg-white border-slate-200 shadow-sm h-fit sticky top-8">
+                  <CardHeader className="border-b border-slate-100">
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-lg font-bold">Resumen de Venta</CardTitle>
+                      <Badge className="bg-indigo-600">{cart.length} ítems</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <ScrollArea className="max-h-[400px]">
+                      {cart.length === 0 ? (
+                        <div className="p-8 text-center text-slate-400 italic">
+                          El carrito está vacío.
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-slate-100">
+                          {cart.map(item => (
+                            <div key={item.productId} className="p-4 flex justify-between items-center">
+                              <div className="flex-1">
+                                <h5 className="text-sm font-medium text-slate-900">{item.productName}</h5>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-xs text-slate-500">${item.unitPrice.toFixed(2)} x {item.quantity}</span>
+                                  <span className="text-xs font-bold text-indigo-600">${item.totalPrice.toFixed(2)}</span>
+                                </div>
+                              </div>
+                              <Button 
+                                variant="ghost" 
+                                size="icon-sm" 
+                                className="text-slate-400 hover:text-red-500"
+                                onClick={() => removeFromCart(item.productId)}
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </ScrollArea>
+                    
+                    {cart.length > 0 && (
+                      <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-600 font-medium">Total a Pagar</span>
+                          <span className="text-2xl font-bold text-slate-900">
+                            ${cart.reduce((acc, item) => acc + item.totalPrice, 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <Button 
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-12 text-lg font-bold"
+                          onClick={handleConfirmSale}
+                        >
+                          Confirmar Venta
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             </motion.div>
           )}
