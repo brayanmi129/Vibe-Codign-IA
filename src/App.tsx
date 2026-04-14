@@ -857,11 +857,11 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FC] text-slate-900 font-sans flex flex-col md:flex-row">
+    <div className="min-h-screen bg-slate-100 flex justify-center overflow-x-hidden">
       <Toaster position="top-right" />
-      
-      {/* Mobile Header */}
-      <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
+      <div className="w-full max-w-[1600px] bg-white flex flex-col md:flex-row shadow-2xl shadow-slate-200/50 min-h-screen relative">
+        {/* Mobile Header */}
+        <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <div className="bg-indigo-600 p-1.5 rounded-lg">
             <Package className="text-white w-5 h-5" />
@@ -967,7 +967,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Sidebar / Nav (Desktop) */}
-      <div className="fixed left-0 top-0 h-full w-72 bg-white border-r border-slate-200 p-8 hidden md:flex flex-col shadow-sm z-30">
+      <div className="sticky left-0 top-0 h-screen w-80 bg-white border-r border-slate-100 p-8 hidden md:flex flex-col shadow-sm z-30">
         <div className="flex items-center gap-3 mb-12">
           <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-100">
             <Package className="text-white w-6 h-6" />
@@ -1040,7 +1040,7 @@ export default function App() {
       </div>
 
       {/* Main Content */}
-      <main className="md:ml-72 min-h-screen bg-slate-50/50">
+      <main className="flex-1 min-h-screen bg-slate-50/30">
         <div className="max-w-7xl mx-auto p-6 md:p-10 lg:p-12">
           <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
             <div>
@@ -2101,6 +2101,7 @@ export default function App() {
         </AnimatePresence>
         </div>
       </main>
+      </div>
     </div>
   );
 }
