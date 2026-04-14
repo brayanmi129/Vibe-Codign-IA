@@ -445,34 +445,49 @@ export default function App() {
   const seedAdminData = async () => {
     if (!user || user.uid !== "local-admin") return;
     
-    toast.info("Inicializando datos de administrador...");
+    toast.info("Inicializando datos de administrador en la base de datos...");
     
     try {
       // 1. Seed Products
-      for (const p of INITIAL_PRODUCTS) {
-        await setDoc(doc(db, "users", user.uid, "products", p.id), {
+      const productPromises = INITIAL_PRODUCTS.map(p => 
+        setDoc(doc(db, "users", user.uid, "products", p.id), {
           ...p,
           lastUpdated: new Date().toISOString()
-        });
-      }
+        })
+      );
+      await Promise.all(productPromises);
 
       // 2. Seed Sales (Last Week)
-      for (const s of INITIAL_SALES) {
-        await setDoc(doc(db, "users", user.uid, "sales", s.id), {
+      const salePromises = INITIAL_SALES.map(s => 
+        setDoc(doc(db, "users", user.uid, "sales", s.id), {
           ...s,
           userId: user.uid
-        });
-      }
+        })
+      );
+      await Promise.all(salePromises);
       
-      toast.success("Datos de administrador inicializados");
+      toast.success("¡Datos de administrador listos en Firebase!");
     } catch (error) {
       console.error("Error seeding admin data:", error);
+      toast.error("Error al inicializar datos en la base de datos");
     }
   };
 
   const handleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      const loggedUser = result.user;
+      
+      // Save user profile to Firestore
+      await setDoc(doc(db, "users", loggedUser.uid), {
+        uid: loggedUser.uid,
+        displayName: loggedUser.displayName,
+        email: loggedUser.email,
+        photoURL: loggedUser.photoURL,
+        lastLogin: new Date().toISOString(),
+        authType: "google"
+      }, { merge: true });
+
       toast.success("Sesión iniciada correctamente");
     } catch (error) {
       toast.error("Error al iniciar sesión");
@@ -480,29 +495,33 @@ export default function App() {
     }
   };
 
-  const handleLocalLogin = (e: React.FormEvent) => {
+  const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (localUsername === "admin" && localPassword === "admin") {
+    if (localUsername && localPassword) {
+      const isTestAdmin = localUsername === "admin" && localPassword === "admin";
+      const uid = isTestAdmin ? "local-admin" : `local-${localUsername}`;
+      
       const mockUser = {
-        uid: "local-admin",
-        displayName: "Administrador Local",
-        email: "admin@stockmaster.local",
-        photoURL: null
-      };
-      setUser(mockUser);
-      localStorage.setItem("stockmaster_local_user", JSON.stringify(mockUser));
-      toast.success("Sesión iniciada como Admin");
-    } else if (localUsername && localPassword) {
-      // Any other user starts with 0 products
-      const mockUser = {
-        uid: `local-${localUsername}`,
-        displayName: localUsername,
+        uid: uid,
+        displayName: isTestAdmin ? "Administrador Local" : localUsername,
         email: `${localUsername}@stockmaster.local`,
         photoURL: null
       };
-      setUser(mockUser);
-      localStorage.setItem("stockmaster_local_user", JSON.stringify(mockUser));
-      toast.success(`Bienvenido, ${localUsername}`);
+
+      try {
+        // Save local user profile to Firestore
+        await setDoc(doc(db, "users", uid), {
+          ...mockUser,
+          lastLogin: new Date().toISOString(),
+          authType: "local"
+        }, { merge: true });
+
+        setUser(mockUser);
+        localStorage.setItem("stockmaster_local_user", JSON.stringify(mockUser));
+        toast.success(isTestAdmin ? "Sesión iniciada como Admin" : `Bienvenido, ${localUsername}`);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${uid}`);
+      }
     } else {
       toast.error("Credenciales inválidas");
     }
@@ -948,15 +967,15 @@ export default function App() {
       </AnimatePresence>
 
       {/* Sidebar / Nav (Desktop) */}
-      <div className="fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 p-6 hidden md:block">
-        <div className="flex items-center gap-2 mb-10">
-          <div className="bg-indigo-600 p-2 rounded-lg">
+      <div className="fixed left-0 top-0 h-full w-72 bg-white border-r border-slate-200 p-8 hidden md:flex flex-col shadow-sm z-30">
+        <div className="flex items-center gap-3 mb-12">
+          <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-100">
             <Package className="text-white w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight">StockMaster <span className="text-indigo-600">AI</span></h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">StockMaster <span className="text-indigo-600">AI</span></h1>
         </div>
 
-        <nav className="space-y-2">
+        <nav className="space-y-2 flex-1">
           <NavItem 
             active={activeTab === "dashboard"} 
             onClick={() => setActiveTab("dashboard")}
@@ -995,108 +1014,109 @@ export default function App() {
           />
         </nav>
 
-        <div className="mt-auto pt-6 border-t border-slate-100 space-y-2">
-          <div className="flex items-center gap-3 px-4 py-2">
-            <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+        <div className="mt-auto pt-8 border-t border-slate-100 space-y-4">
+          <div className="flex items-center gap-3 px-2 py-1">
+            <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shadow-inner">
               {user.photoURL ? (
-                <img src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" />
+                <img src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
               ) : (
-                <UserIcon className="w-full h-full p-1.5 text-slate-400" />
+                <UserIcon className="w-full h-full p-2 text-slate-400" />
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-900 truncate">{user.displayName}</p>
+              <p className="text-sm font-semibold text-slate-900 truncate">{user.displayName}</p>
               <p className="text-xs text-slate-500 truncate">{user.email}</p>
             </div>
           </div>
           <Button 
             variant="ghost" 
-            className="w-full justify-start gap-3 text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+            className="w-full justify-start gap-3 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl px-4"
             onClick={handleLogout}
           >
             <LogOut size={18} />
-            <span>Cerrar Sesión</span>
+            <span className="font-medium">Cerrar Sesión</span>
           </Button>
         </div>
       </div>
 
       {/* Main Content */}
-      <main className="md:ml-64 p-4 md:p-8">
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <h2 className="text-xl md:text-2xl font-bold text-slate-900">
-              {activeTab === "dashboard" ? "Resumen de Negocio" : 
-               activeTab === "inventory" ? "Control de Inventario" : 
-               activeTab === "products" ? "Catálogo de Productos" :
-               activeTab === "new-sale" ? "Nueva Venta" :
-               activeTab === "sales" ? "Reporte de Ventas" :
-               "Inteligencia Artificial"}
-            </h2>
-            <p className="text-slate-500 text-xs md:text-sm">Bienvenido de nuevo, aquí está lo que sucede hoy.</p>
-          </div>
-          <div className="flex gap-2 sm:gap-3">
-            <Button variant="outline" size="sm" className="bg-white flex-1 sm:flex-none" onClick={() => window.location.reload()}>
-              <RefreshCw size={14} className="mr-2" /> Refrescar
-            </Button>
-            {activeTab === "products" && (
-              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogTrigger render={
-                  <Button className="bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => setEditingProduct(null)}>
-                    <Plus size={16} className="mr-2" /> Nuevo Producto
-                  </Button>
-                } />
-                <DialogContent className="sm:max-w-[425px]">
-                  <form onSubmit={handleAddProduct}>
-                    <DialogHeader>
-                      <DialogTitle>{editingProduct ? "Editar Producto" : "Agregar Producto"}</DialogTitle>
-                      <DialogDescription>
-                        Completa los detalles del producto para tu catálogo.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="name" className="text-right">Nombre</Label>
-                        <Input id="name" name="name" defaultValue={editingProduct?.name} className="col-span-3" required />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="brand" className="text-right">Marca</Label>
-                        <Input id="brand" name="brand" defaultValue={editingProduct?.brand} className="col-span-3" placeholder="Ej: Nestlé" required />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="code" className="text-right">Código</Label>
-                        <Input id="code" name="code" defaultValue={editingProduct?.code} className="col-span-3" placeholder="Ej: COD123 (Opcional)" />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="category" className="text-right">Categoría</Label>
-                        <Input id="category" name="category" defaultValue={editingProduct?.category} className="col-span-3" required />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="price" className="text-right">Precio</Label>
-                        <Input id="price" name="price" type="number" step="0.01" defaultValue={editingProduct?.price} className="col-span-3" required />
-                      </div>
-                      {!editingProduct && (
+      <main className="md:ml-72 min-h-screen bg-slate-50/50">
+        <div className="max-w-7xl mx-auto p-6 md:p-10 lg:p-12">
+          <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
+            <div>
+              <h2 className="text-3xl font-bold text-slate-900 tracking-tight">
+                {activeTab === "dashboard" ? "Resumen de Negocio" : 
+                 activeTab === "inventory" ? "Control de Inventario" : 
+                 activeTab === "products" ? "Catálogo de Productos" :
+                 activeTab === "new-sale" ? "Nueva Venta" :
+                 activeTab === "sales" ? "Reporte de Ventas" :
+                 "Inteligencia Artificial"}
+              </h2>
+              <p className="text-slate-500 mt-1 font-medium">Bienvenido de nuevo, aquí está lo que sucede hoy.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="lg" className="bg-white shadow-sm border-slate-200 hover:bg-slate-50" onClick={() => window.location.reload()}>
+                <RefreshCw size={16} className="mr-2" /> Refrescar
+              </Button>
+              {activeTab === "products" && (
+                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                  <DialogTrigger render={
+                    <Button className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-100 px-6 h-11" onClick={() => setEditingProduct(null)}>
+                      <Plus size={18} className="mr-2" /> Nuevo Producto
+                    </Button>
+                  } />
+                  <DialogContent className="sm:max-w-[425px]">
+                    <form onSubmit={handleAddProduct}>
+                      <DialogHeader>
+                        <DialogTitle>{editingProduct ? "Editar Producto" : "Agregar Producto"}</DialogTitle>
+                        <DialogDescription>
+                          Completa los detalles del producto para tu catálogo.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="quantity" className="text-right">Stock Inicial</Label>
-                          <Input id="quantity" name="quantity" type="number" defaultValue={0} className="col-span-3" required />
+                          <Label htmlFor="name" className="text-right">Nombre</Label>
+                          <Input id="name" name="name" defaultValue={editingProduct?.name} className="col-span-3" required />
                         </div>
-                      )}
-                      <div className="pt-4 mt-2 border-t border-slate-100">
                         <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="minStock" className="text-right font-semibold text-indigo-600">Stock Mín.</Label>
-                          <Input id="minStock" name="minStock" type="number" defaultValue={editingProduct?.minStockLevel} className="col-span-3 border-indigo-100 focus:border-indigo-300" required />
+                          <Label htmlFor="brand" className="text-right">Marca</Label>
+                          <Input id="brand" name="brand" defaultValue={editingProduct?.brand} className="col-span-3" placeholder="Ej: Nestlé" required />
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-1 ml-[25%]">Se activará una alerta cuando el stock sea igual o menor a este valor.</p>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="code" className="text-right">Código</Label>
+                          <Input id="code" name="code" defaultValue={editingProduct?.code} className="col-span-3" placeholder="Ej: COD123 (Opcional)" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="category" className="text-right">Categoría</Label>
+                          <Input id="category" name="category" defaultValue={editingProduct?.category} className="col-span-3" required />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="price" className="text-right">Precio</Label>
+                          <Input id="price" name="price" type="number" step="0.01" defaultValue={editingProduct?.price} className="col-span-3" required />
+                        </div>
+                        {!editingProduct && (
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="quantity" className="text-right">Stock Inicial</Label>
+                            <Input id="quantity" name="quantity" type="number" defaultValue={0} className="col-span-3" required />
+                          </div>
+                        )}
+                        <div className="pt-4 mt-2 border-t border-slate-100">
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="minStock" className="text-right font-semibold text-indigo-600">Stock Mín.</Label>
+                            <Input id="minStock" name="minStock" type="number" defaultValue={editingProduct?.minStockLevel} className="col-span-3 border-indigo-100 focus:border-indigo-300" required />
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1 ml-[25%]">Se activará una alerta cuando el stock sea igual o menor a este valor.</p>
+                        </div>
                       </div>
-                    </div>
-                    <DialogFooter>
-                      <Button type="submit" className="bg-indigo-600 text-white">Guardar Cambios</Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            )}
-          </div>
-        </header>
+                      <DialogFooter>
+                        <Button type="submit" className="bg-indigo-600 text-white">Guardar Cambios</Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
+          </header>
 
         <AnimatePresence mode="wait">
           {activeTab === "dashboard" && (
@@ -2079,6 +2099,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </main>
     </div>
   );

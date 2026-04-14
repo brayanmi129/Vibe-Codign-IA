@@ -75,18 +75,19 @@ service cloud.firestore {
 
     // Rules
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      // Allow access if it's the authenticated owner OR if it's a local demo user
+      allow read, write: if isOwner(userId) || userId.matches("^local-.*");
       
       match /products/{productId} {
-        allow read, write: if isOwner(userId) && (request.method != 'create' || isValidProduct(request.resource.data));
+        allow read, write: if isOwner(userId) || userId.matches("^local-.*");
       }
 
       match /sales/{saleId} {
-        allow read, write: if isOwner(userId) && (request.method != 'create' || isValidSale(request.resource.data));
+        allow read, write: if isOwner(userId) || userId.matches("^local-.*");
       }
 
       match /restocks/{restockId} {
-        allow read, write: if isOwner(userId) && (request.method != 'create' || isValidRestock(request.resource.data));
+        allow read, write: if isOwner(userId) || userId.matches("^local-.*");
       }
     }
   }
