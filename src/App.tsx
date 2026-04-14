@@ -24,7 +24,9 @@ import {
   Calendar,
   DollarSign,
   History,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Menu,
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -286,6 +288,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [aiInsights, setAiInsights] = useState<AIInsight[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -557,15 +560,6 @@ export default function App() {
     setCart(cart.filter(item => item.productId !== productId));
   };
 
-  const handleResetData = () => {
-    if (window.confirm("¿Estás seguro de que quieres restablecer los datos de demostración? Se perderán todos los cambios actuales.")) {
-      localStorage.removeItem("inventory_products");
-      localStorage.removeItem("inventory_sales");
-      localStorage.removeItem("inventory_restocks");
-      window.location.reload();
-    }
-  };
-
   const handleAddProduct = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -625,7 +619,87 @@ export default function App() {
     <div className="min-h-screen bg-[#F8F9FC] text-slate-900 font-sans">
       <Toaster position="top-right" />
       
-      {/* Sidebar / Nav */}
+      {/* Mobile Header */}
+      <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-2">
+          <div className="bg-indigo-600 p-1.5 rounded-lg">
+            <Package className="text-white w-5 h-5" />
+          </div>
+          <h1 className="text-lg font-bold tracking-tight">StockMaster <span className="text-indigo-600">AI</span></h1>
+        </div>
+        <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </Button>
+      </div>
+
+      {/* Mobile Menu Overlay */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden"
+            />
+            <motion.div 
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed left-0 top-0 h-full w-72 bg-white z-50 p-6 md:hidden shadow-2xl"
+            >
+              <div className="flex items-center gap-2 mb-10">
+                <div className="bg-indigo-600 p-2 rounded-lg">
+                  <Package className="text-white w-6 h-6" />
+                </div>
+                <h1 className="text-xl font-bold tracking-tight">StockMaster <span className="text-indigo-600">AI</span></h1>
+              </div>
+              <nav className="space-y-2">
+                <NavItem 
+                  active={activeTab === "dashboard"} 
+                  onClick={() => { setActiveTab("dashboard"); setIsMobileMenuOpen(false); }}
+                  icon={<LayoutDashboard size={20} />}
+                  label="Dashboard"
+                />
+                <NavItem 
+                  active={activeTab === "inventory"} 
+                  onClick={() => { setActiveTab("inventory"); setIsMobileMenuOpen(false); }}
+                  icon={<Package size={20} />}
+                  label="Inventario"
+                />
+                <NavItem 
+                  active={activeTab === "products"} 
+                  onClick={() => { setActiveTab("products"); setIsMobileMenuOpen(false); }}
+                  icon={<Edit2 size={20} />}
+                  label="Productos"
+                />
+                <NavItem 
+                  active={activeTab === "new-sale"} 
+                  onClick={() => { setActiveTab("new-sale"); setIsMobileMenuOpen(false); }}
+                  icon={<Plus size={20} />}
+                  label="Nueva Venta"
+                />
+                <NavItem 
+                  active={activeTab === "sales"} 
+                  onClick={() => { setActiveTab("sales"); setIsMobileMenuOpen(false); }}
+                  icon={<ShoppingCart size={20} />}
+                  label="Ventas"
+                />
+                <NavItem 
+                  active={activeTab === "ai"} 
+                  onClick={() => { setActiveTab("ai"); setIsMobileMenuOpen(false); }}
+                  icon={<BrainCircuit size={20} />}
+                  label="Insights IA"
+                />
+              </nav>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Sidebar / Nav (Desktop) */}
       <div className="fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 p-6 hidden md:block">
         <div className="flex items-center gap-2 mb-10">
           <div className="bg-indigo-600 p-2 rounded-lg">
@@ -675,10 +749,10 @@ export default function App() {
       </div>
 
       {/* Main Content */}
-      <main className="md:ml-64 p-8">
-        <header className="flex justify-between items-center mb-8">
+      <main className="md:ml-64 p-4 md:p-8">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">
+            <h2 className="text-xl md:text-2xl font-bold text-slate-900">
               {activeTab === "dashboard" ? "Resumen de Negocio" : 
                activeTab === "inventory" ? "Control de Inventario" : 
                activeTab === "products" ? "Catálogo de Productos" :
@@ -686,16 +760,11 @@ export default function App() {
                activeTab === "sales" ? "Reporte de Ventas" :
                "Inteligencia Artificial"}
             </h2>
-            <p className="text-slate-500 text-sm">Bienvenido de nuevo, aquí está lo que sucede hoy.</p>
+            <p className="text-slate-500 text-xs md:text-sm">Bienvenido de nuevo, aquí está lo que sucede hoy.</p>
           </div>
-          <div className="flex gap-3">
-            {activeTab === "dashboard" && (
-              <Button variant="ghost" className="text-slate-400 hover:text-indigo-600" onClick={handleResetData}>
-                <RefreshCw size={16} className="mr-2" /> Reset Demo
-              </Button>
-            )}
-            <Button variant="outline" className="bg-white" onClick={() => window.location.reload()}>
-              <RefreshCw size={16} className="mr-2" /> Refrescar
+          <div className="flex gap-2 sm:gap-3">
+            <Button variant="outline" size="sm" className="bg-white flex-1 sm:flex-none" onClick={() => window.location.reload()}>
+              <RefreshCw size={14} className="mr-2" /> Refrescar
             </Button>
             {activeTab === "products" && (
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -964,60 +1033,62 @@ export default function App() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <Table>
-                    <TableHeader className="bg-slate-50/50">
-                      <TableRow>
-                        <TableHead className="font-semibold">Código</TableHead>
-                        <TableHead className="font-semibold">Producto</TableHead>
-                        <TableHead className="font-semibold">Marca</TableHead>
-                        <TableHead className="font-semibold">Categoría</TableHead>
-                        <TableHead className="font-semibold">Precio Unitario</TableHead>
-                        <TableHead className="font-semibold">Stock Mínimo</TableHead>
-                        <TableHead className="text-right font-semibold">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredProducts.map((product) => (
-                        <TableRow key={product.id} className="hover:bg-slate-50/50 transition-colors">
-                          <TableCell className="font-mono text-xs text-slate-500">{product.code}</TableCell>
-                          <TableCell className="font-medium">{product.name}</TableCell>
-                          <TableCell className="text-slate-600">{product.brand}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className="bg-slate-100 text-slate-600">
-                              {product.category}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="font-semibold text-slate-700">{formatCurrency(product.price)}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2 text-slate-500">
-                              <AlertTriangle size={14} className="text-amber-500" />
-                              <span>{product.minStockLevel} unidades</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50" onClick={() => {
-                                setEditingProduct(product);
-                                setIsAddDialogOpen(true);
-                              }}>
-                                <Edit2 size={16} />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDeleteProduct(product.id)}>
-                                <Trash2 size={16} />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {filteredProducts.length === 0 && (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
                         <TableRow>
-                          <TableCell colSpan={5} className="h-32 text-center text-slate-500">
-                            No se encontraron productos en el catálogo.
-                          </TableCell>
+                          <TableHead className="font-semibold">Código</TableHead>
+                          <TableHead className="font-semibold">Producto</TableHead>
+                          <TableHead className="font-semibold">Marca</TableHead>
+                          <TableHead className="font-semibold">Categoría</TableHead>
+                          <TableHead className="font-semibold">Precio Unitario</TableHead>
+                          <TableHead className="font-semibold">Stock Mínimo</TableHead>
+                          <TableHead className="text-right font-semibold">Acciones</TableHead>
                         </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredProducts.map((product) => (
+                          <TableRow key={product.id} className="hover:bg-slate-50/50 transition-colors">
+                            <TableCell className="font-mono text-xs text-slate-500">{product.code}</TableCell>
+                            <TableCell className="font-medium">{product.name}</TableCell>
+                            <TableCell className="text-slate-600">{product.brand}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="bg-slate-100 text-slate-600">
+                                {product.category}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-semibold text-slate-700">{formatCurrency(product.price)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2 text-slate-500">
+                                <AlertTriangle size={14} className="text-amber-500" />
+                                <span>{product.minStockLevel} unidades</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50" onClick={() => {
+                                  setEditingProduct(product);
+                                  setIsAddDialogOpen(true);
+                                }}>
+                                  <Edit2 size={16} />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDeleteProduct(product.id)}>
+                                  <Trash2 size={16} />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {filteredProducts.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={7} className="h-32 text-center text-slate-500">
+                              No se encontraron productos en el catálogo.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
@@ -1080,69 +1151,71 @@ export default function App() {
                       </div>
                     </CardHeader>
                     <CardContent className="p-0">
-                      <Table>
-                        <TableHeader className="bg-slate-50/50">
-                          <TableRow>
-                            <TableHead className="font-semibold">Código</TableHead>
-                            <TableHead className="font-semibold">Producto</TableHead>
-                            <TableHead className="font-semibold">Marca</TableHead>
-                            <TableHead className="font-semibold">Stock Actual</TableHead>
-                            <TableHead className="font-semibold">Predicción</TableHead>
-                            <TableHead className="font-semibold">Estado</TableHead>
-                            <TableHead className="text-right font-semibold">Acciones</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredProducts.map((product) => {
-                            const daysLeft = getDaysOfStock(product.id);
-                            return (
-                              <TableRow key={product.id} className="hover:bg-slate-50/50 transition-colors">
-                                <TableCell className="font-mono text-xs text-slate-500">{product.code}</TableCell>
-                                <TableCell className="font-medium">{product.name}</TableCell>
-                                <TableCell className="text-slate-600 text-xs">{product.brand}</TableCell>
-                                <TableCell>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-lg font-bold ${product.quantity <= product.minStockLevel ? "text-amber-600" : "text-slate-900"}`}>
-                                      {product.quantity}
-                                    </span>
-                                    <span className="text-slate-400 text-xs">ud.</span>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center gap-2">
-                                    <Calendar size={14} className="text-slate-400" />
-                                    <span className="text-sm text-slate-600">
-                                      {daysLeft === 999 ? "Estable" : `~${daysLeft} días`}
-                                    </span>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  {product.quantity === 0 ? (
-                                    <Badge className="bg-rose-100 text-rose-700 border-rose-200">Agotado</Badge>
-                                  ) : product.quantity <= product.minStockLevel ? (
-                                    <Badge className="bg-amber-100 text-amber-700 border-amber-200">Crítico</Badge>
-                                  ) : (
-                                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Saludable</Badge>
-                                  )}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="h-8 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50"
-                                    onClick={() => {
-                                      setRestockProductId(product.id);
-                                      setInventoryTab("restock");
-                                    }}
-                                  >
-                                    <RefreshCw size={14} className="mr-1" /> Reponer
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader className="bg-slate-50/50">
+                            <TableRow>
+                              <TableHead className="font-semibold">Código</TableHead>
+                              <TableHead className="font-semibold">Producto</TableHead>
+                              <TableHead className="font-semibold">Marca</TableHead>
+                              <TableHead className="font-semibold">Stock Actual</TableHead>
+                              <TableHead className="font-semibold">Predicción</TableHead>
+                              <TableHead className="font-semibold">Estado</TableHead>
+                              <TableHead className="text-right font-semibold">Acciones</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredProducts.map((product) => {
+                              const daysLeft = getDaysOfStock(product.id);
+                              return (
+                                <TableRow key={product.id} className="hover:bg-slate-50/50 transition-colors">
+                                  <TableCell className="font-mono text-xs text-slate-500">{product.code}</TableCell>
+                                  <TableCell className="font-medium">{product.name}</TableCell>
+                                  <TableCell className="text-slate-600 text-xs">{product.brand}</TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-lg font-bold ${product.quantity <= product.minStockLevel ? "text-amber-600" : "text-slate-900"}`}>
+                                        {product.quantity}
+                                      </span>
+                                      <span className="text-slate-400 text-xs">ud.</span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      <Calendar size={14} className="text-slate-400" />
+                                      <span className="text-sm text-slate-600">
+                                        {daysLeft === 999 ? "Estable" : `~${daysLeft} días`}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    {product.quantity === 0 ? (
+                                      <Badge className="bg-rose-100 text-rose-700 border-rose-200">Agotado</Badge>
+                                    ) : product.quantity <= product.minStockLevel ? (
+                                      <Badge className="bg-amber-100 text-amber-700 border-amber-200">Crítico</Badge>
+                                    ) : (
+                                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Saludable</Badge>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm" 
+                                      className="h-8 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                                      onClick={() => {
+                                        setRestockProductId(product.id);
+                                        setInventoryTab("restock");
+                                      }}
+                                    >
+                                      <RefreshCw size={14} className="mr-1" /> Reponer
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -1256,7 +1329,8 @@ export default function App() {
                       </CardHeader>
                       <CardContent className="p-0">
                         <ScrollArea className="h-[450px]">
-                          <Table>
+                          <div className="overflow-x-auto">
+                            <Table>
                             <TableHeader className="bg-slate-50/50">
                               <TableRow>
                                 <TableHead>Producto</TableHead>
@@ -1293,7 +1367,8 @@ export default function App() {
                               )}
                             </TableBody>
                           </Table>
-                        </ScrollArea>
+                        </div>
+                      </ScrollArea>
                       </CardContent>
                     </Card>
                   </div>
@@ -1414,50 +1489,52 @@ export default function App() {
                             <CardDescription>Listado completo de transacciones para el día seleccionado.</CardDescription>
                           </CardHeader>
                           <CardContent className="p-0">
-                            <Table>
-                              <TableHeader className="bg-slate-50">
-                                <TableRow>
-                                  <TableHead>Producto</TableHead>
-                                  <TableHead>Hora</TableHead>
-                                  <TableHead>Cant.</TableHead>
-                                  <TableHead className="text-right">Total</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {filteredSales
-                                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                  .map((sale) => {
-                                    return (
-                                      <TableRow key={sale.id}>
-                                        <TableCell className="font-medium">
-                                          <div className="flex flex-col gap-1">
-                                            {(sale.items || []).map((item, idx) => (
-                                              <div key={idx} className="text-xs">
-                                                <span className="font-semibold">{item.productName}</span>
-                                                <span className="text-slate-500 ml-1">x{item.quantity}</span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </TableCell>
-                                        <TableCell className="text-slate-500 text-xs">
-                                          {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </TableCell>
-                                        <TableCell>{(sale.items || []).reduce((acc, i) => acc + i.quantity, 0)}</TableCell>
-                                        <TableCell className="text-right font-semibold">
-                                          {formatCurrency(sale.totalAmount)}
-                                        </TableCell>
-                                      </TableRow>
-                                    );
-                                  })}
-                                {filteredSales.length === 0 && (
+                            <div className="overflow-x-auto">
+                              <Table>
+                                <TableHeader className="bg-slate-50">
                                   <TableRow>
-                                    <TableCell colSpan={4} className="h-32 text-center text-slate-400 italic">
-                                      No hay ventas registradas para este día.
-                                    </TableCell>
+                                    <TableHead>Producto</TableHead>
+                                    <TableHead>Hora</TableHead>
+                                    <TableHead>Cant.</TableHead>
+                                    <TableHead className="text-right">Total</TableHead>
                                   </TableRow>
-                                )}
-                              </TableBody>
-                            </Table>
+                                </TableHeader>
+                                <TableBody>
+                                  {filteredSales
+                                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                    .map((sale) => {
+                                      return (
+                                        <TableRow key={sale.id}>
+                                          <TableCell className="font-medium">
+                                            <div className="flex flex-col gap-1">
+                                              {(sale.items || []).map((item, idx) => (
+                                                <div key={idx} className="text-xs">
+                                                  <span className="font-semibold">{item.productName}</span>
+                                                  <span className="text-slate-500 ml-1">x{item.quantity}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </TableCell>
+                                          <TableCell className="text-slate-500 text-xs">
+                                            {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                          </TableCell>
+                                          <TableCell>{(sale.items || []).reduce((acc, i) => acc + i.quantity, 0)}</TableCell>
+                                          <TableCell className="text-right font-semibold">
+                                            {formatCurrency(sale.totalAmount)}
+                                          </TableCell>
+                                        </TableRow>
+                                      );
+                                    })}
+                                  {filteredSales.length === 0 && (
+                                    <TableRow>
+                                      <TableCell colSpan={4} className="h-32 text-center text-slate-400 italic">
+                                        No hay ventas registradas para este día.
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </div>
                           </CardContent>
                         </Card>
                       ) : (
@@ -1479,7 +1556,8 @@ export default function App() {
                               const sortedGrouped = Object.values(grouped).sort((a: any, b: any) => b.date.localeCompare(a.date));
 
                               return (
-                                <Table>
+                                <div className="overflow-x-auto">
+                                  <Table>
                                   <TableHeader className="bg-slate-50">
                                     <TableRow>
                                       <TableHead>Fecha</TableHead>
@@ -1506,8 +1584,9 @@ export default function App() {
                                     )}
                                   </TableBody>
                                 </Table>
-                              );
-                            })()}
+                              </div>
+                            );
+                          })()}
                           </CardContent>
                         </Card>
                       )}
