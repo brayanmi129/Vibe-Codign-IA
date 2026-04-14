@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: products
+    // Document ID: productId
+    // Fields:
+    //   - id: string (required)
+    //   - code: string (required)
+    //   - name: string (required, size < 100)
+    //   - brand: string (optional)
+    //   - category: string (optional)
+    //   - price: number (required, > 0)
+    //   - quantity: number (required, >= 0)
+    //   - minStockLevel: number (required, >= 0)
+    //   - lastUpdated: timestamp
+    //
+    // Collection: sales
+    // Document ID: saleId
+    // Fields:
+    //   - id: string (required)
+    //   - date: timestamp (required)
+    //   - total: number (required, > 0)
+    //   - userId: string (required, matches auth.uid)
+    //   - items: list (required, size < 50)
+    //
+    // Collection: restocks
+    // Document ID: restockId
+    // Fields:
+    //   - id: string (required)
+    //   - productId: string (required)
+    //   - productName: string (required)
+    //   - quantity: number (required, > 0)
+    //   - date: timestamp (required)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "brakcris129@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'code', 'name', 'price', 'quantity', 'minStockLevel']) &&
+             data.name is string && data.name.size() < 100 &&
+             data.price is number && data.price >= 0 &&
+             data.quantity is number && data.quantity >= 0 &&
+             data.minStockLevel is number && data.minStockLevel >= 0;
+    }
+
+    function isValidSale(data) {
+      return data.keys().hasAll(['id', 'date', 'total', 'userId', 'items']) &&
+             data.total is number && data.total >= 0 &&
+             data.userId == request.auth.uid &&
+             data.items is list && data.items.size() < 50;
+    }
+
+    function isValidRestock(data) {
+      return data.keys().hasAll(['id', 'productId', 'productName', 'quantity', 'date']) &&
+             data.quantity is number && data.quantity > 0;
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+      
+      match /products/{productId} {
+        allow read, write: if isOwner(userId) && (request.method != 'create' || isValidProduct(request.resource.data));
+      }
+
+      match /sales/{saleId} {
+        allow read, write: if isOwner(userId) && (request.method != 'create' || isValidSale(request.resource.data));
+      }
+
+      match /restocks/{restockId} {
+        allow read, write: if isOwner(userId) && (request.method != 'create' || isValidRestock(request.resource.data));
+      }
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A product in the inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "brand": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "quantity": { "type": "number" },
+        "minStockLevel": { "type": "number" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "code", "name", "price", "quantity"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "A sales transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "total": { "type": "number" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "productName": { "type": "string" },
+              "quantity": { "type": "number" },
+              "unitPrice": { "type": "number" },
+              "totalPrice": { "type": "number" }
+            }
+          }
+        },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "date", "total", "items", "userId"]
+    },
+    "Restock": {
+      "title": "Restock",
+      "description": "A product restock entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "productId", "quantity", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/products/{productId}": {
+      "schema": "Product",
+      "description": "User-specific product catalog"
+    },
+    "/users/{userId}/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "User-specific sales transactions"
+    },
+    "/users/{userId}/restocks/{restockId}": {
+      "schema": "Restock",
+      "description": "User-specific inventory restock history"
+    }
+  }
+}

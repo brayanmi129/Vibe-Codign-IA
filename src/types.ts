@@ -23,11 +23,13 @@ export interface SaleRecord {
   items: SaleItem[];
   totalAmount: number;
   date: string;
+  userId?: string;
 }
 
 export interface RestockRecord {
   id: string;
   productId: string;
+  productName?: string;
   quantity: number;
   date: string;
 }

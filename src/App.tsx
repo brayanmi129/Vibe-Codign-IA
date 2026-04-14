@@ -81,8 +81,32 @@ import {
   Line,
   Cell
 } from "recharts";
+import { 
+  auth, 
+  db, 
+  googleProvider, 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged, 
+  collection, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot,
+  addDoc,
+  serverTimestamp,
+  handleFirestoreError,
+  OperationType,
+  User
+} from "./lib/firebase";
 import { Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord } from "./types";
 import { getAIReplenishmentSuggestions, getAIBusinessAnalysis } from "./lib/inventoryService";
+import { LogIn, LogOut, User as UserIcon } from "lucide-react";
 
 // Sample Data
 const INITIAL_PRODUCTS: Product[] = [
@@ -199,91 +223,12 @@ const formatCurrency = (amount: number) => {
 };
 
 export default function App() {
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem("inventory_products");
-    const initial = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-    // Migration: ensure all products have a code, brand and COP prices
-    return initial.map((p: Product) => {
-      // Fix low prices (likely USD) to COP
-      let price = p.price;
-      if (price < 100) {
-        // Try to find in INITIAL_PRODUCTS first
-        const initialP = INITIAL_PRODUCTS.find(ip => ip.id === p.id);
-        price = initialP ? initialP.price : price * 4000;
-      }
-
-      return {
-        ...p,
-        price: price,
-        code: p.code || generateProductCode(p.name),
-        brand: p.brand || "Genérico"
-      };
-    });
-  });
-  const [sales, setSales] = useState<SaleRecord[]>(() => {
-    const saved = localStorage.getItem("inventory_sales");
-    const initial = saved ? JSON.parse(saved) : INITIAL_SALES;
-    
-    // Use INITIAL_PRODUCTS for lookup during migration because 'products' state isn't ready yet
-    const lookupProducts = (() => {
-      const savedProducts = localStorage.getItem("inventory_products");
-      return savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS;
-    })();
-
-    // Migration: ensure all sales have items array and valid data
-    return initial.map((s: any) => {
-      // Helper to fix low prices (likely old USD data)
-      const fixPrice = (price: number, productId: string) => {
-        if (price > 100) return price; // Already COP
-        const p = lookupProducts.find((lp: any) => lp.id === productId);
-        return p?.price || price * 4000; // Fallback to 4000 rate if not found
-      };
-
-      if (s.items && Array.isArray(s.items)) {
-        // Ensure item names and prices are populated if they are generic or 0
-        const updatedItems = s.items.map((item: any) => {
-          const p = lookupProducts.find((lp: any) => lp.id === item.productId);
-          const unitPrice = fixPrice(item.unitPrice || 0, item.productId);
-          return {
-            ...item,
-            productName: item.productName === "Producto" || !item.productName ? (p?.name || "Producto") : item.productName,
-            unitPrice: unitPrice,
-            totalPrice: unitPrice * item.quantity
-          };
-        });
-
-        const calculatedTotal = updatedItems.reduce((sum: number, item: any) => sum + (item.totalPrice || 0), 0);
-        return {
-          ...s,
-          items: updatedItems,
-          totalAmount: calculatedTotal || 0
-        };
-      }
-      
-      // Convert old structure to new
-      const qty = s.quantity || 0;
-      const product = lookupProducts.find((p: any) => p.id === s.productId);
-      const price = fixPrice(product?.price || 0, s.productId);
-      const total = qty * price;
-
-      return {
-        id: s.id || Math.random().toString(36).substr(2, 9),
-        items: [{
-          productId: s.productId || "unknown",
-          productName: product?.name || "Producto",
-          quantity: qty,
-          unitPrice: price,
-          totalPrice: total
-        }],
-        totalAmount: total,
-        date: s.date || new Date().toISOString()
-      };
-    });
-  });
-  const [restocks, setRestocks] = useState<RestockRecord[]>(() => {
-    const saved = localStorage.getItem("inventory_restocks");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [user, setUser] = useState<User | any>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [sales, setSales] = useState<SaleRecord[]>([]);
+  const [restocks, setRestocks] = useState<RestockRecord[]>([]);
+  
   const [activeTab, setActiveTab] = useState("dashboard");
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -294,6 +239,11 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [inventoryTab, setInventoryTab] = useState<"status" | "restock">("status");
   const [cart, setCart] = useState<SaleItem[]>([]);
+
+  // Local Login State
+  const [localUsername, setLocalUsername] = useState("");
+  const [localPassword, setLocalPassword] = useState("");
+  const [loginMode, setLoginMode] = useState<"google" | "local">("google");
 
   // Sales Filter State
   const [salesDateFilter, setSalesDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -446,18 +396,280 @@ export default function App() {
     return suggestion;
   };
 
-  // Persistence
+  // Auth Listener
   useEffect(() => {
-    localStorage.setItem("inventory_products", JSON.stringify(products));
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Real-time Data Sync
+  useEffect(() => {
+    if (!user) return;
+
+    // Sync Products
+    const qProducts = query(collection(db, "users", user.uid, "products"), orderBy("name"));
+    const unsubProducts = onSnapshot(qProducts, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
+      setProducts(data);
+      
+      // Seed initial data for admin/admin if empty
+      if (data.length === 0 && user.uid === "local-admin") {
+        seedAdminData();
+      }
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/products`));
+
+    // Sync Sales
+    const qSales = query(collection(db, "users", user.uid, "sales"), orderBy("date", "desc"));
+    const unsubSales = onSnapshot(qSales, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SaleRecord));
+      setSales(data);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/sales`));
+
+    // Sync Restocks
+    const qRestocks = query(collection(db, "users", user.uid, "restocks"), orderBy("date", "desc"));
+    const unsubRestocks = onSnapshot(qRestocks, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as RestockRecord));
+      setRestocks(data);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/restocks`));
+
+    return () => {
+      unsubProducts();
+      unsubSales();
+      unsubRestocks();
+    };
+  }, [user]);
+
+  const seedAdminData = async () => {
+    if (!user || user.uid !== "local-admin") return;
+    
+    toast.info("Inicializando datos de administrador...");
+    
+    try {
+      // 1. Seed Products
+      for (const p of INITIAL_PRODUCTS) {
+        await setDoc(doc(db, "users", user.uid, "products", p.id), {
+          ...p,
+          lastUpdated: new Date().toISOString()
+        });
+      }
+
+      // 2. Seed Sales (Last Week)
+      for (const s of INITIAL_SALES) {
+        await setDoc(doc(db, "users", user.uid, "sales", s.id), {
+          ...s,
+          userId: user.uid
+        });
+      }
+      
+      toast.success("Datos de administrador inicializados");
+    } catch (error) {
+      console.error("Error seeding admin data:", error);
+    }
+  };
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      toast.success("Sesión iniciada correctamente");
+    } catch (error) {
+      toast.error("Error al iniciar sesión");
+      console.error(error);
+    }
+  };
+
+  const handleLocalLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (localUsername === "admin" && localPassword === "admin") {
+      const mockUser = {
+        uid: "local-admin",
+        displayName: "Administrador Local",
+        email: "admin@stockmaster.local",
+        photoURL: null
+      };
+      setUser(mockUser);
+      localStorage.setItem("stockmaster_local_user", JSON.stringify(mockUser));
+      toast.success("Sesión iniciada como Admin");
+    } else if (localUsername && localPassword) {
+      // Any other user starts with 0 products
+      const mockUser = {
+        uid: `local-${localUsername}`,
+        displayName: localUsername,
+        email: `${localUsername}@stockmaster.local`,
+        photoURL: null
+      };
+      setUser(mockUser);
+      localStorage.setItem("stockmaster_local_user", JSON.stringify(mockUser));
+      toast.success(`Bienvenido, ${localUsername}`);
+    } else {
+      toast.error("Credenciales inválidas");
+    }
+  };
+
+  // Check for local session on mount
+  useEffect(() => {
+    const savedLocalUser = localStorage.getItem("stockmaster_local_user");
+    if (savedLocalUser && !user) {
+      setUser(JSON.parse(savedLocalUser));
+    }
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      if (user?.uid?.startsWith("local-")) {
+        setUser(null);
+        localStorage.removeItem("stockmaster_local_user");
+      } else {
+        await signOut(auth);
+      }
+      toast.success("Sesión cerrada");
+    } catch (error) {
+      toast.error("Error al cerrar sesión");
+    }
+  };
+
+  const isAdmin = user?.email === "brakcris129@gmail.com" || user?.uid === "local-admin";
+
+  // Data Handlers
+  const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!user) return;
+    
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get("name") as string;
+    
+    try {
+      const id = editingProduct?.id || Math.random().toString(36).substr(2, 9);
+      const newProduct = {
+        id,
+        name,
+        code: (formData.get("code") as string) || generateProductCode(name),
+        brand: (formData.get("brand") as string) || "Genérico",
+        price: parseFloat(formData.get("price") as string) || 0,
+        quantity: editingProduct ? editingProduct.quantity : parseInt(formData.get("quantity") as string) || 0,
+        category: formData.get("category") as string || "General",
+        minStockLevel: parseInt(formData.get("minStock") as string) || 5,
+        lastUpdated: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, "users", user.uid, "products", id), newProduct);
+      toast.success(editingProduct ? "Producto actualizado" : "Producto añadido");
+      setIsAddDialogOpen(false);
+      setEditingProduct(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/products`);
+    }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "products", id));
+      toast.success("Producto eliminado");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `users/${user.uid}/products/${id}`);
+    }
+  };
+
+  const handleConfirmSale = async () => {
+    if (!user) return toast.error("Debes iniciar sesión para realizar ventas");
+    if (cart.length === 0) return;
+
+    try {
+      const totalAmount = cart.reduce((acc, item) => acc + item.totalPrice, 0);
+      const saleId = `sale_${Date.now()}`;
+      
+      const newSale: SaleRecord = {
+        id: saleId,
+        items: cart,
+        totalAmount,
+        date: new Date().toISOString(),
+        userId: user.uid
+      };
+
+      // 1. Create sale record
+      await setDoc(doc(db, "users", user.uid, "sales", saleId), newSale);
+
+      // 2. Update product quantities
+      for (const item of cart) {
+        const product = products.find(p => p.id === item.productId);
+        if (product) {
+          await updateDoc(doc(db, "users", user.uid, "products", product.id), {
+            quantity: product.quantity - item.quantity,
+            lastUpdated: new Date().toISOString()
+          });
+        }
+      }
+
+      setCart([]);
+      toast.success("Venta confirmada con éxito");
+      setActiveTab("dashboard");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/sales`);
+    }
+  };
+
+  const handleRestock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (!restockProductId || !restockQuantity) return;
+
+    try {
+      const qty = parseInt(restockQuantity);
+      const product = products.find(p => p.id === restockProductId);
+      
+      if (!product) return;
+
+      const restockId = `restock_${Date.now()}`;
+      const newRestock: RestockRecord = {
+        id: restockId,
+        productId: restockProductId,
+        productName: product.name,
+        quantity: qty,
+        date: new Date().toISOString()
+      };
+
+      // 1. Create restock record
+      await setDoc(doc(db, "users", user.uid, "restocks", restockId), newRestock);
+
+      // 2. Update product quantity
+      await updateDoc(doc(db, "users", user.uid, "products", product.id), {
+        quantity: product.quantity + qty,
+        lastUpdated: new Date().toISOString()
+      });
+
+      setRestockProductId("");
+      setRestockQuantity("");
+      toast.success(`Se han añadido ${qty} unidades a ${product.name}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/restocks`);
+    }
+  };
+
+  // Chart Data
+  const stockByCategoryData = useMemo(() => {
+    const data: Record<string, number> = {};
+    products.forEach(p => {
+      data[p.category] = (data[p.category] || 0) + p.quantity;
+    });
+    return Object.entries(data).map(([name, value]) => ({ name, value }));
   }, [products]);
 
-  useEffect(() => {
-    localStorage.setItem("inventory_sales", JSON.stringify(sales));
-  }, [sales]);
+  const salesHistoryData = useMemo(() => {
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return d.toISOString().split('T')[0];
+    }).reverse();
 
-  useEffect(() => {
-    localStorage.setItem("inventory_restocks", JSON.stringify(restocks));
-  }, [restocks]);
+    return last7Days.map(date => {
+      const daySales = sales.filter(s => s.date.startsWith(date));
+      const total = daySales.reduce((acc, s) => acc + s.items.reduce((sum, item) => sum + item.quantity, 0), 0);
+      return { date: date.split('-').slice(1).join('/'), sales: total };
+    });
+  }, [sales]);
 
   // Stats Calculation
   const stats = useMemo<InventoryStats>(() => {
@@ -498,33 +710,6 @@ export default function App() {
     }
   };
 
-  // Product Handlers
-  const handleConfirmSale = () => {
-    if (cart.length === 0) return;
-
-    const newSale: SaleRecord = {
-      id: `s${Date.now()}`,
-      items: [...cart],
-      totalAmount: cart.reduce((acc, item) => acc + item.totalPrice, 0),
-      date: new Date().toISOString(),
-    };
-
-    // Update stock
-    const updatedProducts = products.map(p => {
-      const cartItem = cart.find(item => item.productId === p.id);
-      if (cartItem) {
-        return { ...p, quantity: p.quantity - cartItem.quantity, lastUpdated: new Date().toISOString() };
-      }
-      return p;
-    });
-
-    setProducts(updatedProducts);
-    setSales(prev => [newSale, ...prev]);
-    setCart([]);
-    toast.success("Venta registrada con éxito");
-    setActiveTab("sales");
-  };
-
   const addToCart = (product: Product, quantity: number) => {
     if (quantity <= 0) return;
     if (quantity > product.quantity) {
@@ -560,63 +745,100 @@ export default function App() {
     setCart(cart.filter(item => item.productId !== productId));
   };
 
-  const handleAddProduct = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const name = formData.get("name") as string;
-    const newProduct: Product = {
-      id: editingProduct?.id || Math.random().toString(36).substr(2, 9),
-      name,
-      code: (formData.get("code") as string) || generateProductCode(name),
-      brand: (formData.get("brand") as string) || "Genérico",
-      price: parseFloat(formData.get("price") as string),
-      quantity: editingProduct ? editingProduct.quantity : parseInt(formData.get("quantity") as string),
-      category: formData.get("category") as string,
-      minStockLevel: parseInt(formData.get("minStock") as string),
-      lastUpdated: new Date().toISOString(),
-    };
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="animate-spin text-indigo-600 w-10 h-10" />
+          <p className="text-slate-500 font-medium">Cargando StockMaster AI...</p>
+        </div>
+      </div>
+    );
+  }
 
-    if (editingProduct) {
-      setProducts(products.map(p => p.id === editingProduct.id ? newProduct : p));
-      toast.success("Producto actualizado");
-    } else {
-      setProducts([...products, newProduct]);
-      toast.success("Producto añadido");
-    }
-    setIsAddDialogOpen(false);
-    setEditingProduct(null);
-  };
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl border-none">
+          <CardHeader className="text-center space-y-2">
+            <div className="mx-auto w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 mb-2">
+              <Package className="text-white w-8 h-8" />
+            </div>
+            <CardTitle className="text-3xl font-bold text-slate-900">StockMaster AI</CardTitle>
+            <CardDescription className="text-slate-500">
+              Gestión inteligente de inventario y ventas
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6 pt-4">
+            <Tabs value={loginMode} onValueChange={(v: any) => setLoginMode(v)} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="google">Google Login</TabsTrigger>
+                <TabsTrigger value="local">Login Local</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="google" className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl text-indigo-700 text-sm">
+                    <BrainCircuit size={20} />
+                    <span>Análisis de stock con Inteligencia Artificial</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl text-emerald-700 text-sm">
+                    <TrendingUp size={20} />
+                    <span>Reportes de ventas en tiempo real</span>
+                  </div>
+                </div>
+                <Button 
+                  onClick={handleLogin} 
+                  className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white text-lg font-semibold gap-2 shadow-lg shadow-indigo-100"
+                >
+                  <LogIn size={20} />
+                  Iniciar Sesión con Google
+                </Button>
+              </TabsContent>
 
-  const handleDeleteProduct = (id: string) => {
-    setProducts(products.filter(p => p.id !== id));
-    toast.success("Producto eliminado");
-  };
-
-  // Chart Data
-  const stockByCategoryData = useMemo(() => {
-    const data: Record<string, number> = {};
-    products.forEach(p => {
-      data[p.category] = (data[p.category] || 0) + p.quantity;
-    });
-    return Object.entries(data).map(([name, value]) => ({ name, value }));
-  }, [products]);
-
-  const salesHistoryData = useMemo(() => {
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      return d.toISOString().split('T')[0];
-    }).reverse();
-
-    return last7Days.map(date => {
-      const daySales = sales.filter(s => s.date.startsWith(date));
-      const total = daySales.reduce((acc, s) => acc + s.items.reduce((sum, item) => sum + item.quantity, 0), 0);
-      return { date: date.split('-').slice(1).join('/'), sales: total };
-    });
-  }, [sales]);
+              <TabsContent value="local" className="space-y-4">
+                <form onSubmit={handleLocalLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Usuario</Label>
+                    <Input 
+                      id="username" 
+                      placeholder="admin" 
+                      value={localUsername}
+                      onChange={(e) => setLocalUsername(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Contraseña</Label>
+                    <Input 
+                      id="password" 
+                      type="password" 
+                      placeholder="••••••••" 
+                      value={localPassword}
+                      onChange={(e) => setLocalPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white">
+                    Entrar al Sistema
+                  </Button>
+                  <p className="text-center text-xs text-slate-400">
+                    Usa <span className="font-bold">admin / admin</span> para ver datos de prueba.
+                  </p>
+                </form>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+          <div className="p-6 justify-center border-t border-slate-100 flex">
+            <p className="text-xs text-slate-400">© 2024 StockMaster AI - Control Total</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FC] text-slate-900 font-sans">
+    <div className="min-h-screen bg-[#F8F9FC] text-slate-900 font-sans flex flex-col md:flex-row">
       <Toaster position="top-right" />
       
       {/* Mobile Header */}
@@ -627,9 +849,11 @@ export default function App() {
           </div>
           <h1 className="text-lg font-bold tracking-tight">StockMaster <span className="text-indigo-600">AI</span></h1>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </Button>
+        </div>
       </div>
 
       {/* Mobile Menu Overlay */}
@@ -694,6 +918,30 @@ export default function App() {
                   label="Insights IA"
                 />
               </nav>
+
+              <div className="mt-auto pt-6 border-t border-slate-100 space-y-2">
+                <div className="flex items-center gap-3 px-4 py-2">
+                  <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" />
+                    ) : (
+                      <UserIcon className="w-full h-full p-1.5 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-900 truncate">{user.displayName}</p>
+                    <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                  </div>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start gap-3 text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+                  onClick={handleLogout}
+                >
+                  <LogOut size={18} />
+                  <span>Cerrar Sesión</span>
+                </Button>
+              </div>
             </motion.div>
           </>
         )}
@@ -746,6 +994,30 @@ export default function App() {
             label="Insights IA"
           />
         </nav>
+
+        <div className="mt-auto pt-6 border-t border-slate-100 space-y-2">
+          <div className="flex items-center gap-3 px-4 py-2">
+            <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" />
+              ) : (
+                <UserIcon className="w-full h-full p-1.5 text-slate-400" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-900 truncate">{user.displayName}</p>
+              <p className="text-xs text-slate-500 truncate">{user.email}</p>
+            </div>
+          </div>
+          <Button 
+            variant="ghost" 
+            className="w-full justify-start gap-3 text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+            onClick={handleLogout}
+          >
+            <LogOut size={18} />
+            <span>Cerrar Sesión</span>
+          </Button>
+        </div>
       </div>
 
       {/* Main Content */}
