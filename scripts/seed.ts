@@ -378,12 +378,6 @@ async function seedStore(adminUid: string) {
 
 async function run() {
   try {
-<<<<<<< Updated upstream
-    // Skip full clear to avoid permission issues with broad collection listing
-    // await clearCollections(); 
-    await seedData();
-    console.log("✨ Database reinitialized successfully!");
-=======
     console.log("🚀 StockMaster — seed inicial\n");
 
     const adminUid = await getOrCreateAdmin();
@@ -399,7 +393,6 @@ async function run() {
     console.log(`   Ventas:     últimos 30 días (~200)`);
     console.log("═══════════════════════════════════════\n");
     process.exit(0);
->>>>>>> Stashed changes
   } catch (error) {
     console.error("\n💥 Error durante el seed:", error);
     process.exit(1);
