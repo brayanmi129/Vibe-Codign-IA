@@ -356,14 +356,18 @@ export default function App() {
 
   // Analytics Calculations
   const analytics = useMemo(() => {
+    // Apply branch filter to all analytics
+    const scopedSales = activeBranchId ? sales.filter(s => s.branchId === activeBranchId) : sales;
+    const scopedProducts = activeBranchId ? products.filter(p => p.branchId === activeBranchId) : products;
+
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-    const getSalesForDate = (dateStr: string) => sales.filter(s => s.date.startsWith(dateStr));
-    
+    const getSalesForDate = (dateStr: string) => scopedSales.filter(s => s.date.startsWith(dateStr));
+
     const todaySales = getSalesForDate(todayStr);
     const yesterdaySales = getSalesForDate(yesterdayStr);
 
@@ -381,8 +385,8 @@ export default function App() {
     const startOfLastWeek = new Date(startOfThisWeek);
     startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
 
-    const thisWeekSales = sales.filter(s => new Date(s.date) >= startOfThisWeek);
-    const lastWeekSales = sales.filter(s => {
+    const thisWeekSales = scopedSales.filter(s => new Date(s.date) >= startOfThisWeek);
+    const lastWeekSales = scopedSales.filter(s => {
       const d = new Date(s.date);
       return d >= startOfLastWeek && d < startOfThisWeek;
     });
@@ -391,8 +395,8 @@ export default function App() {
     const lastWeekRevenue = calculateRevenue(lastWeekSales);
 
     // Top Products
-    const productPerformance = products.map(p => {
-      const totalQty = sales.reduce((acc, s) => {
+    const productPerformance = scopedProducts.map(p => {
+      const totalQty = scopedSales.reduce((acc, s) => {
         const item = (s.items || []).find(i => i.productId === p.id);
         return acc + (item ? item.quantity : 0);
       }, 0);
@@ -404,13 +408,12 @@ export default function App() {
     const topByRev = [...productPerformance].sort((a, b) => b.totalRev - a.totalRev).slice(0, 5);
 
     // Smart Notifications
-    const notifications = [];
-    
-    // High demand (sold more than 10 units in last 3 days)
+    const notifications: any[] = [];
+
     const threeDaysAgo = new Date(now);
     threeDaysAgo.setDate(now.getDate() - 3);
-    products.forEach(p => {
-      const totalRecent = sales.reduce((acc, s) => {
+    scopedProducts.forEach(p => {
+      const totalRecent = scopedSales.reduce((acc, s) => {
         if (new Date(s.date) < threeDaysAgo) return acc;
         const item = (s.items || []).find(i => i.productId === p.id);
         return acc + (item ? item.quantity : 0);
@@ -426,12 +429,11 @@ export default function App() {
       }
     });
 
-    // No movement (no sales in last 7 days)
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(now.getDate() - 7);
-    products.forEach(p => {
-      const hasRecentSales = sales.some(s => 
-        new Date(s.date) >= sevenDaysAgo && 
+    scopedProducts.forEach(p => {
+      const hasRecentSales = scopedSales.some(s =>
+        new Date(s.date) >= sevenDaysAgo &&
         (s.items || []).some(i => i.productId === p.id)
       );
       if (!hasRecentSales && p.quantity > 0) {
@@ -456,7 +458,7 @@ export default function App() {
       topByRev,
       notifications
     };
-  }, [products, sales]);
+  }, [products, sales, activeBranchId]);
 
   // Days of stock calculation helper
   const getDaysOfStock = (productId: string) => {
@@ -987,6 +989,7 @@ export default function App() {
       const newSale: SaleRecord = {
         id: saleId,
         storeId: currentStore.id,
+        branchId: activeBranchId ?? undefined,
         items: cart,
         totalAmount,
         date: new Date().toISOString(),
@@ -1095,9 +1098,10 @@ export default function App() {
     return products.filter(p => {
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = categoryFilter === "all" || p.category === categoryFilter;
-      return matchesSearch && matchesCategory;
+      const matchesBranch = !activeBranchId || p.branchId === activeBranchId;
+      return matchesSearch && matchesCategory && matchesBranch;
     });
-  }, [products, searchTerm, categoryFilter]);
+  }, [products, searchTerm, categoryFilter, activeBranchId]);
 
   // AI Logic
   const runAIAnalysis = async () => {
@@ -2407,7 +2411,10 @@ export default function App() {
                 const filteredSales = sales.filter(s => {
                   const saleDate = new Date(s.date);
                   const filterDate = new Date(salesDateFilter);
-                  
+
+                  const matchesBranch = !activeBranchId || s.branchId === activeBranchId;
+                  if (!matchesBranch) return false;
+
                   if (salesRangeType === 'day') {
                     return s.date.startsWith(salesDateFilter);
                   } else if (salesRangeType === 'week') {
@@ -2417,7 +2424,7 @@ export default function App() {
                     endOfWeek.setDate(startOfWeek.getDate() + 6);
                     return saleDate >= startOfWeek && saleDate <= endOfWeek;
                   } else {
-                    return saleDate.getMonth() === filterDate.getMonth() && 
+                    return saleDate.getMonth() === filterDate.getMonth() &&
                            saleDate.getFullYear() === filterDate.getFullYear();
                   }
                 });
@@ -2458,6 +2465,7 @@ export default function App() {
                                 <TableHeader className="bg-slate-50">
                                   <TableRow>
                                     <TableHead>Producto</TableHead>
+                                    <TableHead>Sucursal</TableHead>
                                     <TableHead>Hora</TableHead>
                                     <TableHead>Cant.</TableHead>
                                     <TableHead className="text-right">Total</TableHead>
@@ -2467,6 +2475,7 @@ export default function App() {
                                   {filteredSales
                                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                                     .map((sale) => {
+                                      const branchName = branches.find(b => b.id === sale.branchId)?.name;
                                       return (
                                         <TableRow key={sale.id}>
                                           <TableCell className="font-medium">
@@ -2478,6 +2487,13 @@ export default function App() {
                                                 </div>
                                               ))}
                                             </div>
+                                          </TableCell>
+                                          <TableCell>
+                                            {branchName ? (
+                                              <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px]">
+                                                {branchName}
+                                              </Badge>
+                                            ) : <span className="text-slate-300 text-xs">—</span>}
                                           </TableCell>
                                           <TableCell className="text-slate-500 text-xs">
                                             {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -2491,7 +2507,7 @@ export default function App() {
                                     })}
                                   {filteredSales.length === 0 && (
                                     <TableRow>
-                                      <TableCell colSpan={4} className="h-32 text-center text-slate-400 italic">
+                                      <TableCell colSpan={5} className="h-32 text-center text-slate-400 italic">
                                         No hay ventas registradas para este día.
                                       </TableCell>
                                     </TableRow>
