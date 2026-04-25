@@ -1209,13 +1209,6 @@ export default function App() {
           
           <div className="mt-8 text-center space-y-4">
             <p className="text-xs text-slate-400 font-medium">© 2024 StockMaster Pro - Todos los derechos reservados</p>
-            <button 
-              onClick={reseedDatabase}
-              className="inline-flex items-center gap-2 text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline transition-all uppercase tracking-widest font-black bg-white px-4 py-2 rounded-full shadow-sm border border-indigo-50 cursor-pointer"
-            >
-              <Database size={12} />
-              Reseteo de Base de Datos (Modo Seed)
-            </button>
           </div>
         </div>
       );
@@ -1279,13 +1272,6 @@ export default function App() {
           </Card>
           
           <div className="mt-8 text-center space-y-4">
-            <button 
-              onClick={reseedDatabase}
-              className="inline-flex items-center gap-2 text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline transition-all uppercase tracking-widest font-black bg-white px-4 py-2 rounded-full shadow-sm border border-indigo-50 cursor-pointer"
-            >
-              <Database size={12} />
-              ¿Perdiste los datos? Reseteo de Base de Datos
-            </button>
           </div>
         </div>
       );

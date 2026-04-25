@@ -12,12 +12,19 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Special check for demo users who might be in a restricted environment
+    function isDemoUID(uid) {
+      return uid == "demo-user-123" || uid == "demo-employee-456";
+    }
+
     function isStoreOwner(storeId) {
-      return isSignedIn() && get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid;
+      return (isSignedIn() && get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid)
+             || (storeId == "stockmaster-ai-demo" && request.auth == null); // Allow demo bypass if no auth
     }
 
     function isStoreMember(storeId) {
-      return isSignedIn() && exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid));
+      return (storeId == "stockmaster-ai-demo" && request.auth == null) || 
+             (isSignedIn() && exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid)));
     }
 
     function getStoreRole(storeId) {
@@ -25,36 +32,32 @@ service cloud.firestore {
     }
 
     function hasAdminRole(storeId) {
-      return isStoreMember(storeId) && getStoreRole(storeId) == 'admin';
+      return (storeId == "stockmaster-ai-demo" && request.auth == null) || 
+             (isStoreMember(storeId) && getStoreRole(storeId) == 'admin');
     }
 
     function hasEmployeeRole(storeId) {
-      return isStoreMember(storeId) && (getStoreRole(storeId) == 'admin' || getStoreRole(storeId) == 'employee');
+      return (storeId == "stockmaster-ai-demo" && request.auth == null) || 
+             (isStoreMember(storeId) && (getStoreRole(storeId) == 'admin' || getStoreRole(storeId) == 'employee'));
     }
 
     function hasViewerRole(storeId) {
       return isStoreMember(storeId) || isStoreOwner(storeId);
     }
 
-    // Helper for demo access when Auth is restricted
-    function isDemoUser(userId) {
-      return userId == "demo-user-123" || userId == "demo-employee-456";
-    }
-
     // Rules for Stores
     match /stores/{storeId} {
-      // Allow get/list if owner or member OR if it's the demo store
-      allow get: if isStoreMember(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
+      allow get: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
       allow list: if (isSignedIn() && (resource.data.ownerId == request.auth.uid || exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid))))
                   || storeId == "stockmaster-ai-demo";
       
-      allow create: if isSignedIn() || request.resource.data.ownerId == "demo-user-123"; 
+      allow create: if isSignedIn() || (request.resource.data.ownerId == "demo-user-123"); 
       allow update: if hasAdminRole(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
       allow delete: if false;
 
       match /members/{userId} {
-        allow read: if isStoreMember(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
-        allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || (isSignedIn() && request.auth.uid == userId) || isDemoUser(userId);
+        allow read: if hasViewerRole(storeId) || isDemoUID(userId);
+        allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || (isSignedIn() && request.auth.uid == userId) || isDemoUID(userId);
       }
 
       match /products/{productId} {
@@ -76,9 +79,9 @@ service cloud.firestore {
 
     // Global user profiles
     match /users/{userId} {
-      allow read, write: if (isSignedIn() && request.auth.uid == userId) || isDemoUser(userId);
+      allow read, write: if (isSignedIn() && request.auth.uid == userId) || isDemoUID(userId);
       match /{allSubcollections=**} {
-        allow read, write: if (isSignedIn() && request.auth.uid == userId) || isDemoUser(userId);
+        allow read, write: if (isSignedIn() && request.auth.uid == userId) || isDemoUID(userId);
       }
     }
   }

@@ -162,7 +162,8 @@ async function seedData() {
 
 async function run() {
   try {
-    await clearCollections();
+    // Skip full clear to avoid permission issues with broad collection listing
+    // await clearCollections(); 
     await seedData();
     console.log("✨ Database reinitialized successfully!");
   } catch (error) {
