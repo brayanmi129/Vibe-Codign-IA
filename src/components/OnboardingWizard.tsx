@@ -14,9 +14,11 @@ import {
   Layout,
   Plus,
   Trash2,
-  ChevronRight
+  ChevronRight,
+  Database
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { reseedDatabase } from '../lib/seed';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
@@ -646,8 +648,15 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
           </motion.div>
         </AnimatePresence>
 
-        <div className="text-center mt-8 space-y-4">
+        <div className="text-center mt-8 space-y-6">
           <p className="text-xs text-slate-400 font-medium">StockMaster Pro v2.0 - Onboarding Seguro & Privado</p>
+          <button 
+            onClick={reseedDatabase}
+            className="inline-flex items-center gap-2 text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline transition-all uppercase tracking-widest font-black bg-white px-5 py-2.5 rounded-full shadow-md border-2 border-indigo-50 cursor-pointer mx-auto block"
+          >
+            <Database size={12} />
+            Reinicializar Base de Datos (Si hay errores)
+          </button>
           <div className="flex justify-center gap-4">
             <div className="w-2 h-2 rounded-full bg-slate-200" />
             <div className="w-2 h-2 rounded-full bg-slate-200" />

@@ -161,11 +161,6 @@ async function seedData() {
 }
 
 async function run() {
-  if (process.env.FORCE_RESET !== "true") {
-    console.error("❌ Error: You must set FORCE_RESET=true to run this script.");
-    process.exit(1);
-  }
-
   try {
     await clearCollections();
     await seedData();
