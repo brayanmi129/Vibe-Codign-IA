@@ -588,8 +588,14 @@ export default function App() {
   const handleSelectStore = async (store: Store) => {
     setIsStoreLoading(true);
     try {
-      // Get role
-      const memberDoc = await getDoc(doc(db, "stores", store.id, "members", user.uid));
+      // Use auth.currentUser to avoid stale closure when called from onAuthStateChanged
+      const uid = auth.currentUser?.uid ?? (user as any)?.uid;
+      if (!uid) {
+        toast.error("No hay sesión activa");
+        setIsStoreLoading(false);
+        return;
+      }
+      const memberDoc = await getDoc(doc(db, "stores", store.id, "members", uid));
       if (memberDoc.exists()) {
         setMemberRole(memberDoc.data().role as UserRole);
         setCurrentStore(store);
@@ -729,56 +735,17 @@ export default function App() {
     e.preventDefault();
     if (!authEmail || !authPassword) return toast.error("Completa todos los campos");
 
-    // DEMO BYPASS: Specific case for the user requested admin login
-    if (authEmail === "admin@stockmaster.ai" && authPassword === "admin#123") {
+    // Admin: usa auth real con las credenciales creadas por npm run seed
+    if (authEmail === "admin@stockmaster.ai" && authPassword === "Admin#123") {
       try {
-        let uid = "demo-user-123";
-        try {
-          // Attempt to get a real Firebase session if provider is enabled
-          const anonResult = await signInAnonymously(auth);
-          uid = anonResult.user.uid;
-        } catch (authErr: any) {
-          console.warn("Firebase Auth providers disabled, using local fallback:", authErr.code);
-          // If restricted, we continue with a local fallback UID
-        }
-
-        const demoUser = {
-          uid: uid,
-          email: "admin@stockmaster.ai",
-          displayName: authDisplayName || "Admin StockMaster",
-          photoURL: null,
-          isDemo: true
-        };
-        
-        localStorage.setItem("demo_user", JSON.stringify(demoUser));
-        setUser(demoUser as any);
-        
-        if (mode === "signup") {
-          setAuthView("onboarding");
+        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+        toast.success("¡Bienvenido, Admin! 🚀");
+      } catch (err: any) {
+        if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+          toast.error("Usuario no encontrado. Ejecuta primero: npm run seed");
         } else {
-          try {
-            const q = query(collection(db, "stores"), where("ownerId", "==", uid));
-            const snap = await getDocs(q);
-            const stores = snap.docs.map(d => ({ id: d.id, ...d.data() } as Store));
-            setUserStores(stores);
-            
-            if (stores.length === 1) {
-              handleSelectStore(stores[0]);
-            } else if (stores.length > 1) {
-              setAuthView("select-store");
-            } else {
-              setAuthView("onboarding");
-            }
-          } catch (dbErr) {
-            console.error("Firestore access error in demo mode:", dbErr);
-            toast.error("Error al acceder a la base de datos. Verifica tus reglas de Firestore.");
-            setAuthView("onboarding");
-          }
+          toast.error("Error al iniciar sesión");
         }
-        toast.success("¡Modo Demo activado! 🚀");
-      } catch (err) {
-        console.error(err);
-        toast.error("Error al iniciar sesión");
       }
       return;
     }
