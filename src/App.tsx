@@ -26,8 +26,7 @@ import {
   History,
   ArrowRightLeft,
   Menu,
-  X,
-  Database
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -111,9 +110,8 @@ import {
   OperationType,
   User 
 } from "./lib/firebase";
-import { Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord, Store, UserRole, StoreMember } from "./types";
+import { Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord, Store, UserRole, StoreMember, Branch } from "./types";
 import { getAIReplenishmentSuggestions, getAIBusinessAnalysis } from "./lib/inventoryService";
-import { reseedDatabase } from "./lib/seed";
 import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus, Settings, ChevronRight } from "lucide-react";
 import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
 import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard";
@@ -337,15 +335,20 @@ export default function App() {
   const [cart, setCart] = useState<SaleItem[]>([]);
 
   // Auth State
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authDisplayName, setAuthDisplayName] = useState("");
-  const [authView, setAuthView] = useState<"login" | "signup" | "select-store" | "register-store" | "onboarding">("login");
+  const [authView, setAuthView] = useState<"login" | "signup" | "onboarding">("login");
   const [newStoreName, setNewStoreName] = useState("");
 
   // Sales Filter State
   const [salesDateFilter, setSalesDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
   const [salesRangeType, setSalesRangeType] = useState<'day' | 'week' | 'month'>('day');
+
+  const [lastSync, setLastSync] = useState<Date>(new Date());
 
   // Restock Form State
   const [restockProductId, setRestockProductId] = useState<string>("");
@@ -542,18 +545,11 @@ export default function App() {
             const storeDocs = await Promise.all(storePromises);
             const storesData = storeDocs.map(d => ({ ...d.data(), id: d.id } as Store)).filter(s => s.name);
             setUserStores(storesData);
-            
-            if (storesData.length === 1) {
-              handleSelectStore(storesData[0]);
-            } else {
-              const savedStoreId = localStorage.getItem("lastStoreId");
-              const saved = storesData.find(s => s.id === savedStoreId);
-              if (saved) {
-                handleSelectStore(saved);
-              } else {
-                setAuthView("select-store");
-              }
-            }
+
+            // Auto-select: prefer last used, otherwise first
+            const savedStoreId = localStorage.getItem("lastStoreId");
+            const target = storesData.find(s => s.id === savedStoreId) ?? storesData[0];
+            handleSelectStore(target);
           } else {
             setAuthView("onboarding");
           }
@@ -581,26 +577,29 @@ export default function App() {
     }
 
     const unsubProducts = onSnapshot(
-      query(collection(db, "stores", currentStore.id, "products"), orderBy("name")), 
+      query(collection(db, "stores", currentStore.id, "products"), orderBy("name")),
       (snapshot) => {
         setProducts(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product)));
-      }, 
+        setLastSync(new Date());
+      },
       (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/products`)
     );
 
     const unsubSales = onSnapshot(
-      query(collection(db, "stores", currentStore.id, "sales"), orderBy("date", "desc")), 
+      query(collection(db, "stores", currentStore.id, "sales"), orderBy("date", "desc")),
       (snapshot) => {
         setSales(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SaleRecord)));
-      }, 
+        setLastSync(new Date());
+      },
       (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/sales`)
     );
 
     const unsubRestocks = onSnapshot(
-      query(collection(db, "stores", currentStore.id, "restocks"), orderBy("date", "desc")), 
+      query(collection(db, "stores", currentStore.id, "restocks"), orderBy("date", "desc")),
       (snapshot) => {
         setRestocks(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as RestockRecord)));
-      }, 
+        setLastSync(new Date());
+      },
       (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/restocks`)
     );
 
@@ -855,6 +854,23 @@ export default function App() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<UserRole>("employee");
 
+  // Load branches and auto-assign employee to their branch
+  useEffect(() => {
+    if (!currentStore) return;
+    const q = query(collection(db, "stores", currentStore.id, "branches"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setBranches(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Branch)));
+    });
+    return () => unsub();
+  }, [currentStore]);
+
+  useEffect(() => {
+    if (!currentStore || !user || memberRole === "admin") return;
+    // Employees are auto-filtered to their assigned branch
+    const me = members.find(m => m.userId === (auth.currentUser?.uid ?? user?.uid));
+    if (me?.branchId) setActiveBranchId(me.branchId);
+  }, [members, currentStore, memberRole]);
+
   // Sync Store Members
   useEffect(() => {
     if (!currentStore) return;
@@ -926,6 +942,7 @@ export default function App() {
     
     try {
       const id = editingProduct?.id || Math.random().toString(36).substr(2, 9);
+      const costPriceRaw = parseFloat(formData.get("costPrice") as string);
       const newProduct: Product = {
         id,
         storeId: currentStore!.id,
@@ -933,6 +950,7 @@ export default function App() {
         code: (formData.get("code") as string) || generateProductCode(name),
         brand: (formData.get("brand") as string) || "Genérico",
         price: parseFloat(formData.get("price") as string) || 0,
+        costPrice: isNaN(costPriceRaw) ? undefined : costPriceRaw,
         quantity: editingProduct ? editingProduct.quantity : parseInt(formData.get("quantity") as string) || 0,
         category: formData.get("category") as string || "General",
         minStockLevel: parseInt(formData.get("minStock") as string) || 5,
@@ -1231,122 +1249,13 @@ export default function App() {
       );
     }
     
-    if (user && authView === "select-store") {
-      return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-          <Card className="w-full max-w-md shadow-2xl border-none p-1 bg-white rounded-3xl overflow-hidden">
-            <CardHeader className="text-center bg-indigo-600 text-white rounded-2xl m-2 py-8">
-              <div className="mx-auto w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-4">
-                <StoreIcon className="text-white w-8 h-8" />
-              </div>
-              <CardTitle className="text-2xl font-bold">Mis Tiendas</CardTitle>
-              <CardDescription className="text-indigo-100 italic">
-                Selecciona una sucursal para continuar
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-6">
-              <div className="space-y-4">
-                <div className="grid gap-3 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
-                  {userStores.length > 0 ? (
-                    userStores.map(store => (
-                      <Button 
-                        key={store.id} 
-                        variant="outline" 
-                        className="h-20 justify-start px-6 gap-4 bg-white hover:bg-indigo-50/30 border-slate-100 hover:border-indigo-200 transition-all rounded-2xl group"
-                        onClick={() => handleSelectStore(store)}
-                        disabled={isStoreLoading}
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 flex items-center justify-center transition-colors">
-                          <StoreIcon size={20} />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-bold text-slate-700">{store.name}</p>
-                          <p className="text-xs text-slate-400 capitalize">{store.businessType}</p>
-                        </div>
-                        <ArrowDownRight className="ml-auto opacity-0 group-hover:opacity-100 text-indigo-600 transition-all" size={20} />
-                      </Button>
-                    ))
-                  ) : (
-                    <div className="text-center py-8">
-                       <p className="text-slate-400 italic">No tienes tiendas registradas</p>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 mt-6">
-                  <Button variant="outline" onClick={() => setAuthView("onboarding")} className="rounded-xl h-11 border-2">
-                    <Plus size={18} className="mr-2" /> Nueva
-                  </Button>
-                  <Button variant="outline" onClick={handleLogout} className="rounded-xl h-11 border-2 text-rose-600 hover:bg-rose-50 hover:border-rose-100 transition-all">
-                    <LogOut size={18} className="mr-2" /> Salir
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-            <div className="p-4 text-center border-t border-slate-100">
-               <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">StockMaster Multi-Tenant Engine</p>
-            </div>
-          </Card>
-          
-          <div className="mt-8 text-center space-y-4">
-          </div>
-        </div>
-      );
-    }
-
+    // Fallthrough: user logged in but store not ready yet — show spinner
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-2xl border-none p-1 bg-white rounded-3xl overflow-hidden">
-          <CardHeader className="text-center bg-indigo-600 text-white rounded-2xl m-2 py-8">
-            <div className="mx-auto w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-4">
-              <StoreIcon className="text-white w-8 h-8" />
-            </div>
-            <CardTitle className="text-2xl font-bold">Mis Tiendas</CardTitle>
-            <CardDescription className="text-indigo-100 italic">
-              Selecciona una sucursal para continuar
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-6">
-            
-            {(authView === "select-store" || authView === "register-store") && (
-              <div className="space-y-4">
-                <div className="grid gap-3 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
-                  {userStores.map(store => (
-                    <Button 
-                      key={store.id} 
-                      variant="outline" 
-                      className="h-20 justify-start px-6 gap-4 bg-white hover:bg-indigo-50/30 border-slate-100 hover:border-indigo-200 transition-all rounded-2xl group"
-                      onClick={() => handleSelectStore(store)}
-                      disabled={isStoreLoading}
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 flex items-center justify-center transition-colors">
-                        <StoreIcon size={20} />
-                      </div>
-                      <div className="text-left flex-1">
-                        <p className="font-bold text-slate-900">{store.name}</p>
-                        <Badge variant="outline" className="text-[10px] text-slate-400 font-normal border-slate-100 lowercase">id: {store.id}</Badge>
-                      </div>
-                      <ChevronRight className="text-slate-300 group-hover:text-indigo-600 transition-colors" size={20} />
-                    </Button>
-                  ))}
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 mt-6">
-                  <Button variant="outline" onClick={() => setAuthView("onboarding")} className="rounded-xl h-11 border-2">
-                    <Plus size={18} className="mr-2" /> Nueva
-                  </Button>
-                  <Button variant="outline" onClick={handleLogout} className="rounded-xl h-11 border-2 text-rose-600 hover:bg-rose-50 hover:border-rose-100 transition-all">
-                    <LogOut size={18} className="mr-2" /> Salir
-                  </Button>
-                </div>
-              </div>
-            )}
-
-          </CardContent>
-          <div className="p-4 text-center border-t border-slate-100">
-             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">StockMaster Multi-Tenant Engine</p>
-          </div>
-        </Card>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="animate-spin text-indigo-600 w-10 h-10" />
+          <p className="text-slate-500 font-medium">Cargando tu tienda...</p>
+        </div>
       </div>
     );
   }
@@ -1494,18 +1403,31 @@ export default function App() {
           </div>
         </div>
 
-        <div className="mb-8 px-2">
-          <Button 
-            variant="outline" 
-            className="w-full justify-start gap-3 bg-slate-50 border-slate-200 hover:bg-slate-100"
-            onClick={() => setAuthView("select-store")}
-          >
-            <StoreIcon size={18} style={{ color: currentStore?.branding?.primaryColor || "#4F46E5" }} />
-            <div className="text-left overflow-hidden">
+        <div className="mb-8 px-2 space-y-2">
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+            <StoreIcon size={16} style={{ color: currentStore?.branding?.primaryColor || "#4F46E5" }} className="shrink-0" />
+            <div className="overflow-hidden">
               <p className="text-xs font-semibold text-slate-900 truncate">{currentStore?.name}</p>
               <p className="text-[10px] text-slate-500 capitalize">{memberRole}</p>
             </div>
-          </Button>
+          </div>
+          {branches.length > 0 && (
+            <Select
+              value={activeBranchId ?? "all"}
+              onValueChange={(v) => setActiveBranchId(v === "all" ? null : v)}
+              disabled={!isAdmin}
+            >
+              <SelectTrigger className="w-full h-9 bg-white border-slate-200 text-xs">
+                <SelectValue placeholder="Sucursal" />
+              </SelectTrigger>
+              <SelectContent>
+                {isAdmin && <SelectItem value="all">Todas las sucursales</SelectItem>}
+                {branches.map(b => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         <nav className="space-y-2 flex-1">
@@ -1632,9 +1554,15 @@ export default function App() {
                   sheetName="Ventas" 
                 />
               )}
-              <Button variant="outline" size="lg" className="bg-white shadow-sm border-slate-200 hover:bg-slate-50" onClick={() => window.location.reload()}>
-                <RefreshCw size={16} className="mr-2" /> Refrescar
-              </Button>
+              <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="text-xs text-slate-500 font-medium">
+                  En vivo · {lastSync.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              </div>
               {activeTab === "products" && canEdit && (
                 <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                   <DialogTrigger render={
@@ -1671,8 +1599,18 @@ export default function App() {
                           <Input id="category" name="category" defaultValue={editingProduct?.category} className="col-span-3" required />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="price" className="text-right">Precio</Label>
-                          <Input id="price" name="price" type="number" step="0.01" defaultValue={editingProduct?.price} className="col-span-3" required />
+                          <Label htmlFor="price" className="text-right">Precio venta</Label>
+                          <div className="col-span-3 relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">$</span>
+                            <Input id="price" name="price" type="number" step="1" defaultValue={editingProduct?.price} className="pl-7" required />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="costPrice" className="text-right">Precio costo</Label>
+                          <div className="col-span-3 relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">$</span>
+                            <Input id="costPrice" name="costPrice" type="number" step="1" defaultValue={editingProduct?.costPrice} className="pl-7" placeholder="Opcional" />
+                          </div>
                         </div>
                         {!editingProduct && (
                           <div className="grid grid-cols-4 items-center gap-4">
@@ -1913,7 +1851,9 @@ export default function App() {
                           <TableHead className="font-semibold">Producto</TableHead>
                           <TableHead className="font-semibold">Marca</TableHead>
                           <TableHead className="font-semibold">Categoría</TableHead>
-                          <TableHead className="font-semibold">Precio Unitario</TableHead>
+                          <TableHead className="font-semibold">Precio Venta</TableHead>
+                          <TableHead className="font-semibold">Precio Costo</TableHead>
+                          <TableHead className="font-semibold">Margen</TableHead>
                           <TableHead className="font-semibold">Stock Mínimo</TableHead>
                           <TableHead className="text-right font-semibold">Acciones</TableHead>
                         </TableRow>
@@ -1930,6 +1870,23 @@ export default function App() {
                               </Badge>
                             </TableCell>
                             <TableCell className="font-semibold text-slate-700">{formatCurrency(product.price)}</TableCell>
+                            <TableCell className="text-slate-500">
+                              {product.costPrice ? formatCurrency(product.costPrice) : <span className="text-slate-300 italic text-xs">—</span>}
+                            </TableCell>
+                            <TableCell>
+                              {product.costPrice ? (() => {
+                                const margin = ((product.price - product.costPrice) / product.price) * 100;
+                                return (
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                                    margin >= 30 ? "bg-emerald-50 text-emerald-700" :
+                                    margin >= 15 ? "bg-amber-50 text-amber-700" :
+                                    "bg-rose-50 text-rose-700"
+                                  }`}>
+                                    {margin.toFixed(1)}%
+                                  </span>
+                                );
+                              })() : <span className="text-slate-300 italic text-xs">—</span>}
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2 text-slate-500">
                                 <AlertTriangle size={14} className="text-amber-500" />
@@ -1953,7 +1910,7 @@ export default function App() {
                         ))}
                         {filteredProducts.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={7} className="h-32 text-center text-slate-500">
+                            <TableCell colSpan={9} className="h-32 text-center text-slate-500">
                               No se encontraron productos en el catálogo.
                             </TableCell>
                           </TableRow>
@@ -2290,16 +2247,16 @@ export default function App() {
                               required
                             />
                           </div>
-                          <div className="grid gap-2">
+                          <div className="grid gap-2 ">
                             <Label>Rol asignado</Label>
-                            <Select value={inviteRole} onValueChange={(v: any) => setInviteRole(v)}>
+                            <Select value={inviteRole} onValueChange={(v: any) => setInviteRole(v)} >
                               <SelectTrigger>
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="admin">Administrador (Control total)</SelectItem>
-                                <SelectItem value="employee">Empleado (Ventas e Inventario)</SelectItem>
-                                <SelectItem value="viewer">Observador (Solo lectura)</SelectItem>
+                              <SelectContent className="w-full">
+                                <SelectItem value="admin"> Administrador (Control total)</SelectItem>
+                                <SelectItem value="employee"> Empleado (Ventas e Inventario)</SelectItem>
+                                <SelectItem value="viewer"> Observador (Solo lectura)</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>

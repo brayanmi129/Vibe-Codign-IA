@@ -14,11 +14,9 @@ import {
   Layout,
   Plus,
   Trash2,
-  ChevronRight,
-  Database
+  ChevronRight
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { reseedDatabase } from '../lib/seed';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';

@@ -155,35 +155,35 @@ async function nuclearClear(adminUid: string) {
 
 const PRODUCTS = [
   // Laptops
-  { code: "LPT-001", name: "Laptop Gamer Pro i9 RTX4080",       brand: "SpeedTech",  category: "Laptops",       price: 1499.99, quantity: 12, minStockLevel: 3 },
-  { code: "LPT-002", name: 'MacBook Air M3 15"',                 brand: "Apple",      category: "Laptops",       price: 1199.99, quantity:  1, minStockLevel: 2 }, // ⚠️ crítico
-  { code: "LPT-003", name: 'Laptop Ultrabook 14" FHD',           brand: "LenovoPro",  category: "Laptops",       price:  799.99, quantity: 14, minStockLevel: 4 },
-  { code: "LPT-004", name: "Laptop Empresarial ThinkPro",        brand: "LenovoPro",  category: "Laptops",       price:  699.99, quantity:  9, minStockLevel: 3 },
-  { code: "LPT-005", name: 'Chromebook Student 11"',             brand: "AcerEdu",    category: "Laptops",       price:  349.99, quantity: 18, minStockLevel: 5 },
+  { code: "LPT-001", name: "Laptop Gamer Pro i9 RTX4080",       brand: "SpeedTech",  category: "Laptops",       price: 6299000, costPrice: 5200000, quantity: 12, minStockLevel: 3 },
+  { code: "LPT-002", name: 'MacBook Air M3 15"',                 brand: "Apple",      category: "Laptops",       price: 5199000, costPrice: 4400000, quantity:  1, minStockLevel: 2 }, // ⚠️ crítico
+  { code: "LPT-003", name: 'Laptop Ultrabook 14" FHD',           brand: "LenovoPro",  category: "Laptops",       price: 3299000, costPrice: 2700000, quantity: 14, minStockLevel: 4 },
+  { code: "LPT-004", name: "Laptop Empresarial ThinkPro",        brand: "LenovoPro",  category: "Laptops",       price: 2899000, costPrice: 2350000, quantity:  9, minStockLevel: 3 },
+  { code: "LPT-005", name: 'Chromebook Student 11"',             brand: "AcerEdu",    category: "Laptops",       price: 1499000, costPrice: 1150000, quantity: 18, minStockLevel: 5 },
   // Monitores
-  { code: "MON-001", name: 'Monitor 27" 4K UHD IPS',             brand: "VisionPlus", category: "Monitores",     price:  449.99, quantity:  7, minStockLevel: 2 },
-  { code: "MON-002", name: 'Monitor Curvo 34" UltraWide 144Hz',  brand: "SamsungPro", category: "Monitores",     price:  599.99, quantity:  2, minStockLevel: 3 }, // ⚠️ crítico
-  { code: "MON-003", name: 'Monitor Gaming 27" 165Hz 1ms',       brand: "AcerNitro",  category: "Monitores",     price:  299.99, quantity: 11, minStockLevel: 3 },
-  { code: "MON-004", name: 'Monitor Portátil 15.6" FHD USB-C',   brand: "AOCMobile",  category: "Monitores",     price:  189.99, quantity: 13, minStockLevel: 4 },
+  { code: "MON-001", name: 'Monitor 27" 4K UHD IPS',             brand: "VisionPlus", category: "Monitores",     price: 1899000, costPrice: 1450000, quantity:  7, minStockLevel: 2 },
+  { code: "MON-002", name: 'Monitor Curvo 34" UltraWide 144Hz',  brand: "SamsungPro", category: "Monitores",     price: 2499000, costPrice: 1950000, quantity:  2, minStockLevel: 3 }, // ⚠️ crítico
+  { code: "MON-003", name: 'Monitor Gaming 27" 165Hz 1ms',       brand: "AcerNitro",  category: "Monitores",     price: 1299000, costPrice:  990000, quantity: 11, minStockLevel: 3 },
+  { code: "MON-004", name: 'Monitor Portátil 15.6" FHD USB-C',   brand: "AOCMobile",  category: "Monitores",     price:  799000, costPrice:  600000, quantity: 13, minStockLevel: 4 },
   // Smartphones
-  { code: "SPH-001", name: "iPhone 15 Pro 256GB Titanio",        brand: "Apple",      category: "Smartphones",   price:  999.99, quantity:  2, minStockLevel: 3 }, // ⚠️ crítico
-  { code: "SPH-002", name: "Samsung Galaxy S24 Ultra 512GB",     brand: "Samsung",    category: "Smartphones",   price:  849.99, quantity: 11, minStockLevel: 3 },
-  { code: "SPH-003", name: "Xiaomi Redmi Note 13 Pro 256GB",     brand: "Xiaomi",     category: "Smartphones",   price:  299.99, quantity: 22, minStockLevel: 6 },
-  { code: "SPH-004", name: "Google Pixel 8a 128GB",              brand: "Google",     category: "Smartphones",   price:  449.99, quantity:  0, minStockLevel: 2 }, // ❌ sin stock
+  { code: "SPH-001", name: "iPhone 15 Pro 256GB Titanio",        brand: "Apple",      category: "Smartphones",   price: 4299000, costPrice: 3600000, quantity:  2, minStockLevel: 3 }, // ⚠️ crítico
+  { code: "SPH-002", name: "Samsung Galaxy S24 Ultra 512GB",     brand: "Samsung",    category: "Smartphones",   price: 3599000, costPrice: 2950000, quantity: 11, minStockLevel: 3 },
+  { code: "SPH-003", name: "Xiaomi Redmi Note 13 Pro 256GB",     brand: "Xiaomi",     category: "Smartphones",   price: 1299000, costPrice:  950000, quantity: 22, minStockLevel: 6 },
+  { code: "SPH-004", name: "Google Pixel 8a 128GB",              brand: "Google",     category: "Smartphones",   price: 1899000, costPrice: 1450000, quantity:  0, minStockLevel: 2 }, // ❌ sin stock
   // Periféricos
-  { code: "PER-001", name: "Mouse Inalámbrico Ergonómico",       brand: "LogiFree",   category: "Periféricos",   price:   59.99, quantity: 36, minStockLevel: 8 },
-  { code: "PER-002", name: "Teclado Mecánico RGB TKL",           brand: "GlowKey",    category: "Periféricos",   price:   89.99, quantity: 22, minStockLevel: 6 },
-  { code: "PER-003", name: "Headset Gaming 7.1 Surround USB",    brand: "HyperSound", category: "Periféricos",   price:   79.99, quantity: 17, minStockLevel: 5 },
-  { code: "PER-004", name: "Webcam HD 1080p 60fps Ring Light",   brand: "LogiFree",   category: "Periféricos",   price:   69.99, quantity: 15, minStockLevel: 4 },
-  { code: "PER-005", name: "Hub USB-C 7 en 1 100W PD",          brand: "AnckerPro",  category: "Periféricos",   price:   39.99, quantity: 32, minStockLevel: 8 },
-  { code: "PER-006", name: "Mousepad XL RGB 900×400mm",          brand: "GlowKey",    category: "Periféricos",   price:   29.99, quantity: 45, minStockLevel: 10 },
-  { code: "PER-007", name: "Auriculares Bluetooth Pro ANC",      brand: "SonySound",  category: "Periféricos",   price:  129.99, quantity:  3, minStockLevel: 4 }, // ⚠️ crítico
-  { code: "PER-008", name: "SSD Externo USB-C 1TB 1050MB/s",    brand: "SamsungPro", category: "Periféricos",   price:   99.99, quantity: 18, minStockLevel: 5 },
+  { code: "PER-001", name: "Mouse Inalámbrico Ergonómico",       brand: "LogiFree",   category: "Periféricos",   price:  249000, costPrice:  160000, quantity: 36, minStockLevel: 8 },
+  { code: "PER-002", name: "Teclado Mecánico RGB TKL",           brand: "GlowKey",    category: "Periféricos",   price:  379000, costPrice:  240000, quantity: 22, minStockLevel: 6 },
+  { code: "PER-003", name: "Headset Gaming 7.1 Surround USB",    brand: "HyperSound", category: "Periféricos",   price:  329000, costPrice:  210000, quantity: 17, minStockLevel: 5 },
+  { code: "PER-004", name: "Webcam HD 1080p 60fps Ring Light",   brand: "LogiFree",   category: "Periféricos",   price:  289000, costPrice:  185000, quantity: 15, minStockLevel: 4 },
+  { code: "PER-005", name: "Hub USB-C 7 en 1 100W PD",          brand: "AnckerPro",  category: "Periféricos",   price:  169000, costPrice:  105000, quantity: 32, minStockLevel: 8 },
+  { code: "PER-006", name: "Mousepad XL RGB 900×400mm",          brand: "GlowKey",    category: "Periféricos",   price:  129000, costPrice:   79000, quantity: 45, minStockLevel: 10 },
+  { code: "PER-007", name: "Auriculares Bluetooth Pro ANC",      brand: "SonySound",  category: "Periféricos",   price:  549000, costPrice:  360000, quantity:  3, minStockLevel: 4 }, // ⚠️ crítico
+  { code: "PER-008", name: "SSD Externo USB-C 1TB 1050MB/s",    brand: "SamsungPro", category: "Periféricos",   price:  419000, costPrice:  290000, quantity: 18, minStockLevel: 5 },
   // Redes & Audio
-  { code: "RED-001", name: "Router WiFi 6 Dual Band AX3000",     brand: "TPLinkPro",  category: "Redes & Audio", price:  149.99, quantity: 11, minStockLevel: 3 },
-  { code: "RED-002", name: "Parlante Bluetooth Portátil 20W IP67",brand: "JBLSound",  category: "Redes & Audio", price:   59.99, quantity: 27, minStockLevel: 7 },
-  { code: "RED-003", name: "Barra de Sonido 2.1 80W HDMI ARC",   brand: "SonySound",  category: "Redes & Audio", price:  199.99, quantity:  6, minStockLevel: 2 },
-  { code: "RED-004", name: "Access Point WiFi 6E Mesh EasyMesh",  brand: "TPLinkPro",  category: "Redes & Audio", price:  179.99, quantity:  1, minStockLevel: 2 }, // ⚠️ crítico
+  { code: "RED-001", name: "Router WiFi 6 Dual Band AX3000",     brand: "TPLinkPro",  category: "Redes & Audio", price:  629000, costPrice:  430000, quantity: 11, minStockLevel: 3 },
+  { code: "RED-002", name: "Parlante Bluetooth Portátil 20W IP67",brand: "JBLSound",  category: "Redes & Audio", price:  249000, costPrice:  160000, quantity: 27, minStockLevel: 7 },
+  { code: "RED-003", name: "Barra de Sonido 2.1 80W HDMI ARC",   brand: "SonySound",  category: "Redes & Audio", price:  849000, costPrice:  580000, quantity:  6, minStockLevel: 2 },
+  { code: "RED-004", name: "Access Point WiFi 6E Mesh EasyMesh",  brand: "TPLinkPro",  category: "Redes & Audio", price:  749000, costPrice:  520000, quantity:  1, minStockLevel: 2 }, // ⚠️ crítico
 ];
 
 // ── 4. Generador de ventas ───────────────────────────────────────────────────
@@ -271,7 +271,30 @@ function generateSales(adminUid: string): SaleRecord[] {
   return sales;
 }
 
-// ── 5. Reposiciones ──────────────────────────────────────────────────────────
+// ── 5. Sucursales ─────────────────────────────────────────────────────────────
+
+const BRANCHES = [
+  { id: "branch-centro", name: "Sucursal Centro",  address: "Calle 72 #10-34, Bogotá" },
+  { id: "branch-norte",  name: "Sucursal Norte",   address: "Cra 15 #127-60, Bogotá"  },
+  { id: "branch-sur",    name: "Sucursal Sur",      address: "Av. 68 #38-54, Bogotá"   },
+] as const;
+
+// Distribución de productos por sucursal
+const PRODUCT_BRANCH: Record<string, string> = {
+  "lpt-001": "branch-centro", "lpt-002": "branch-norte",  "lpt-003": "branch-sur",
+  "lpt-004": "branch-centro", "lpt-005": "branch-norte",
+  "mon-001": "branch-centro", "mon-002": "branch-sur",    "mon-003": "branch-norte",
+  "mon-004": "branch-sur",
+  "sph-001": "branch-norte",  "sph-002": "branch-centro", "sph-003": "branch-sur",
+  "sph-004": "branch-norte",
+  "per-001": "branch-centro", "per-002": "branch-norte",  "per-003": "branch-sur",
+  "per-004": "branch-centro", "per-005": "branch-norte",  "per-006": "branch-sur",
+  "per-007": "branch-centro", "per-008": "branch-norte",
+  "red-001": "branch-sur",    "red-002": "branch-centro", "red-003": "branch-norte",
+  "red-004": "branch-sur",
+};
+
+// ── 6. Reposiciones ──────────────────────────────────────────────────────────
 
 const RESTOCKS = [
   { productId: "lpt-001", productName: "Laptop Gamer Pro i9 RTX4080",        quantity:  6, day: 22 },
@@ -329,8 +352,21 @@ async function seedStore(adminUid: string) {
     role:        "admin",
     email:       ADMIN_EMAIL,
     displayName: "Admin StockMaster",
+    // Admin sin branchId = acceso a todas las sucursales
   });
   console.log("✅ Admin vinculado a la tienda (usuario + miembro).");
+
+  // ── Sucursales ──────────────────────────────────────────────────────────
+  for (const b of BRANCHES) {
+    await setDoc(doc(db, "stores", TENANT_ID, "branches", b.id), {
+      id:       b.id,
+      tenantId: TENANT_ID,
+      name:     b.name,
+      address:  b.address,
+      createdAt: daysAgo(90),
+    });
+  }
+  console.log(`✅ ${BRANCHES.length} sucursales creadas.`);
 
   // ── Productos ───────────────────────────────────────────────────────────
   for (const p of PRODUCTS) {
@@ -338,11 +374,13 @@ async function seedStore(adminUid: string) {
     await setDoc(doc(db, "stores", TENANT_ID, "products", id), {
       id,
       storeId:       TENANT_ID,
+      branchId:      PRODUCT_BRANCH[id] ?? "branch-centro",
       code:          p.code,
       name:          p.name,
       brand:         p.brand,
       category:      p.category,
       price:         p.price,
+      costPrice:     p.costPrice,
       quantity:      p.quantity,
       minStockLevel: p.minStockLevel,
       lastUpdated:   daysAgo(1),
@@ -353,7 +391,10 @@ async function seedStore(adminUid: string) {
   // ── Ventas ──────────────────────────────────────────────────────────────
   const sales = generateSales(adminUid);
   for (const s of sales) {
-    await setDoc(doc(db, "stores", TENANT_ID, "sales", s.id), s);
+    // Heredar branchId del primer producto de la venta
+    const firstProductId = s.items[0]?.productId ?? "";
+    const branchId = PRODUCT_BRANCH[firstProductId] ?? "branch-centro";
+    await setDoc(doc(db, "stores", TENANT_ID, "sales", s.id), { ...s, branchId });
   }
   console.log(`✅ ${sales.length} ventas generadas (30 días, ~7/día).`);
 
@@ -364,6 +405,7 @@ async function seedStore(adminUid: string) {
     await setDoc(doc(db, "stores", TENANT_ID, "restocks", id), {
       id,
       storeId:     TENANT_ID,
+      branchId:    PRODUCT_BRANCH[r.productId] ?? "branch-centro",
       productId:   r.productId,
       productName: r.productName,
       quantity:    r.quantity,

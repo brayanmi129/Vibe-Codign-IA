@@ -55,6 +55,11 @@ service cloud.firestore {
       allow update: if hasAdminRole(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
       allow delete: if isStoreOwner(storeId) || hasAdminRole(storeId) || storeId == "stockmaster-ai-demo";
 
+      match /branches/{branchId} {
+        allow read: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || storeId == "stockmaster-ai-demo";
+      }
+
       match /members/{userId} {
         allow read: if isStoreMember(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
         allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || (isSignedIn() && request.auth.uid == userId) || isDemoUser(userId) || storeId == "stockmaster-ai-demo";
