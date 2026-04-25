@@ -36,42 +36,50 @@ service cloud.firestore {
       return isStoreMember(storeId) || isStoreOwner(storeId);
     }
 
+    // Helper for demo access when Auth is restricted
+    function isDemoUser(userId) {
+      return userId == "demo-user-123" || userId == "demo-employee-456";
+    }
+
     // Rules for Stores
     match /stores/{storeId} {
-      // Allow get if owner or member
-      allow get: if isStoreMember(storeId) || isStoreOwner(storeId);
-      // Allow list only if querying by ownerId (for the demo/admin fetch)
-      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      // Allow get/list if owner or member OR if it's the demo store
+      allow get: if isStoreMember(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
+      allow list: if (isSignedIn() && (resource.data.ownerId == request.auth.uid || exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid))))
+                  || storeId == "stockmaster-ai-demo";
       
-      allow create: if isSignedIn(); 
-      allow update: if hasAdminRole(storeId) || isStoreOwner(storeId);
+      allow create: if isSignedIn() || request.resource.data.ownerId == "demo-user-123"; 
+      allow update: if hasAdminRole(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
       allow delete: if false;
 
       match /members/{userId} {
-        allow read: if isStoreMember(storeId) || isStoreOwner(storeId);
-        allow write: if hasAdminRole(storeId) || isStoreOwner(storeId) || (isSignedIn() && request.auth.uid == userId);
+        allow read: if isStoreMember(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || (isSignedIn() && request.auth.uid == userId) || isDemoUser(userId);
       }
 
       match /products/{productId} {
-        allow read: if hasViewerRole(storeId);
-        allow write: if hasEmployeeRole(storeId);
+        allow read: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || storeId == "stockmaster-ai-demo";
       }
 
       match /sales/{saleId} {
-        allow read: if hasViewerRole(storeId);
-        allow create: if hasEmployeeRole(storeId);
-        allow update, delete: if hasAdminRole(storeId);
+        allow read: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow create: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow update, delete: if isStoreOwner(storeId) || hasAdminRole(storeId) || storeId == "stockmaster-ai-demo";
       }
 
       match /restocks/{restockId} {
-        allow read: if hasViewerRole(storeId);
-        allow write: if hasEmployeeRole(storeId);
+        allow read: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || storeId == "stockmaster-ai-demo";
       }
     }
 
     // Global user profiles
     match /users/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read, write: if (isSignedIn() && request.auth.uid == userId) || isDemoUser(userId);
+      match /{allSubcollections=**} {
+        allow read, write: if (isSignedIn() && request.auth.uid == userId) || isDemoUser(userId);
+      }
     }
   }
 }

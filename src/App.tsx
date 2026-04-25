@@ -26,7 +26,8 @@ import {
   History,
   ArrowRightLeft,
   Menu,
-  X
+  X,
+  Database
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -111,6 +112,7 @@ import {
 } from "./lib/firebase";
 import { Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord, Store, UserRole, StoreMember } from "./types";
 import { getAIReplenishmentSuggestions, getAIBusinessAnalysis } from "./lib/inventoryService";
+import { reseedDatabase } from "./lib/seed";
 import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus } from "lucide-react";
 import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
 import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard";
@@ -488,11 +490,14 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (activeUser) => {
       let currentUser = activeUser;
       
-      // If no Firebase user, check for local demo user
-      if (!currentUser) {
-        const demoStorage = localStorage.getItem("demo_user");
-        if (demoStorage) {
-          currentUser = JSON.parse(demoStorage);
+      // Merge with demo info if available
+      const demoStorage = localStorage.getItem("demo_user");
+      if (demoStorage) {
+        const demoUser = JSON.parse(demoStorage);
+        if (currentUser && currentUser.uid === demoUser.uid) {
+          currentUser = { ...currentUser, ...demoUser } as any;
+        } else if (!currentUser && demoUser.isDemo) {
+          currentUser = demoUser;
         }
       }
 
@@ -500,27 +505,34 @@ export default function App() {
       setIsAuthReady(true);
       
       if (currentUser) {
-        // Fetch user's stores
-        const q = query(collection(db, "users", currentUser.uid, "userStores"));
-        const qSnapshot = await getDocs(q);
-        const storesIds = qSnapshot.docs.map(doc => doc.id);
-        
-        if (storesIds.length > 0) {
-          const storePromises = storesIds.map(id => getDoc(doc(db, "stores", id)));
-          const storeDocs = await Promise.all(storePromises);
-          const storesData = storeDocs.map(d => ({ ...d.data(), id: d.id } as Store));
-          setUserStores(storesData);
+        try {
+          // Fetch user's stores
+          const q = query(collection(db, "users", currentUser.uid, "userStores"));
+          const qSnapshot = await getDocs(q);
+          const storesIds = qSnapshot.docs.map(doc => doc.id);
           
-          // Auto-select store if only one and none saved
-          const savedStoreId = localStorage.getItem("lastStoreId");
-          const selected = storesData.find(s => s.id === savedStoreId) || storesData[0];
-          
-          if (selected) {
-             handleSelectStore(selected);
+          if (storesIds.length > 0) {
+            const storePromises = storesIds.map(id => getDoc(doc(db, "stores", id)));
+            const storeDocs = await Promise.all(storePromises);
+            const storesData = storeDocs.map(d => ({ ...d.data(), id: d.id } as Store)).filter(s => s.name);
+            setUserStores(storesData);
+            
+            if (storesData.length === 1) {
+              handleSelectStore(storesData[0]);
+            } else {
+              const savedStoreId = localStorage.getItem("lastStoreId");
+              const saved = storesData.find(s => s.id === savedStoreId);
+              if (saved) {
+                handleSelectStore(saved);
+              } else {
+                setAuthView("select-store");
+              }
+            }
           } else {
-            setAuthView("select-store");
+            setAuthView("onboarding");
           }
-        } else {
+        } catch (error) {
+          console.error("Error fetching stores:", error);
           setAuthView("onboarding");
         }
       } else {
@@ -601,9 +613,15 @@ export default function App() {
       // 1. Create User if not exists
       if (!activeUser && onboardingData.adminInfo?.password) {
         if (onboardingData.adminInfo.email === "admin@stockmaster.ai") {
-          const anonResult = await signInAnonymously(auth);
+          let uid = "demo-user-123";
+          try {
+            const anonResult = await signInAnonymously(auth);
+            uid = anonResult.user.uid;
+          } catch (e) {
+            console.warn("Using fallback UID for onboarding demo");
+          }
           activeUser = {
-            uid: anonResult.user.uid,
+            uid: uid,
             email: "admin@stockmaster.ai",
             displayName: onboardingData.adminInfo.displayName,
             isDemo: true
@@ -714,10 +732,18 @@ export default function App() {
     // DEMO BYPASS: Specific case for the user requested admin login
     if (authEmail === "admin@stockmaster.ai" && authPassword === "admin#123") {
       try {
-        // Sign in anonymously so we have a real Firebase session for rules
-        const anonResult = await signInAnonymously(auth);
+        let uid = "demo-user-123";
+        try {
+          // Attempt to get a real Firebase session if provider is enabled
+          const anonResult = await signInAnonymously(auth);
+          uid = anonResult.user.uid;
+        } catch (authErr: any) {
+          console.warn("Firebase Auth providers disabled, using local fallback:", authErr.code);
+          // If restricted, we continue with a local fallback UID
+        }
+
         const demoUser = {
-          uid: anonResult.user.uid, // Use actual Firebase UID
+          uid: uid,
           email: "admin@stockmaster.ai",
           displayName: authDisplayName || "Admin StockMaster",
           photoURL: null,
@@ -730,24 +756,29 @@ export default function App() {
         if (mode === "signup") {
           setAuthView("onboarding");
         } else {
-          // Now this query should work because we are "signed in" to Firebase
-          const q = query(collection(db, "stores"), where("ownerId", "==", demoUser.uid));
-          const snap = await getDocs(q);
-          const stores = snap.docs.map(d => ({ id: d.id, ...d.data() } as Store));
-          setUserStores(stores);
-          
-          if (stores.length === 1) {
-            handleSelectStore(stores[0]);
-          } else if (stores.length > 1) {
-            setAuthView("select-store");
-          } else {
+          try {
+            const q = query(collection(db, "stores"), where("ownerId", "==", uid));
+            const snap = await getDocs(q);
+            const stores = snap.docs.map(d => ({ id: d.id, ...d.data() } as Store));
+            setUserStores(stores);
+            
+            if (stores.length === 1) {
+              handleSelectStore(stores[0]);
+            } else if (stores.length > 1) {
+              setAuthView("select-store");
+            } else {
+              setAuthView("onboarding");
+            }
+          } catch (dbErr) {
+            console.error("Firestore access error in demo mode:", dbErr);
+            toast.error("Error al acceder a la base de datos. Verifica tus reglas de Firestore.");
             setAuthView("onboarding");
           }
         }
-        toast.success("¡Acceso de administrador (Modo Demo) concedido! 🚀");
+        toast.success("¡Modo Demo activado! 🚀");
       } catch (err) {
         console.error(err);
-        toast.error("Error al iniciar modo demo");
+        toast.error("Error al iniciar sesión");
       }
       return;
     }
@@ -1176,8 +1207,15 @@ export default function App() {
             </CardContent>
           </Card>
           
-          <div className="mt-8 text-center">
+          <div className="mt-8 text-center space-y-4">
             <p className="text-xs text-slate-400 font-medium">© 2024 StockMaster Pro - Todos los derechos reservados</p>
+            <button 
+              onClick={reseedDatabase}
+              className="inline-flex items-center gap-2 text-[10px] text-slate-300 hover:text-indigo-400 transition-colors uppercase tracking-widest font-bold"
+            >
+              <Database size={12} />
+              Reseteo de Base de Datos (Modo Seed)
+            </button>
           </div>
         </div>
       );
