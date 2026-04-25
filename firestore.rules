@@ -38,7 +38,11 @@ service cloud.firestore {
 
     // Rules for Stores
     match /stores/{storeId} {
-      allow read: if isStoreMember(storeId) || isStoreOwner(storeId);
+      // Allow get if owner or member
+      allow get: if isStoreMember(storeId) || isStoreOwner(storeId);
+      // Allow list only if querying by ownerId (for the demo/admin fetch)
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      
       allow create: if isSignedIn(); 
       allow update: if hasAdminRole(storeId) || isStoreOwner(storeId);
       allow delete: if false;

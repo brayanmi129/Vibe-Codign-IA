@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword,
+  signInAnonymously,
   createUserWithEmailAndPassword,
   updateProfile,
   signOut, 
@@ -21,6 +22,7 @@ export const googleProvider = new GoogleAuthProvider();
 export { 
   signInWithPopup, 
   signInWithEmailAndPassword,
+  signInAnonymously,
   createUserWithEmailAndPassword,
   updateProfile,
   signOut, 

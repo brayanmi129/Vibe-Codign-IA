@@ -87,6 +87,7 @@ import {
   googleProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword,
+  signInAnonymously,
   createUserWithEmailAndPassword,
   updateProfile,
   signOut, 
@@ -484,7 +485,17 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (activeUser) => {
+      let currentUser = activeUser;
+      
+      // If no Firebase user, check for local demo user
+      if (!currentUser) {
+        const demoStorage = localStorage.getItem("demo_user");
+        if (demoStorage) {
+          currentUser = JSON.parse(demoStorage);
+        }
+      }
+
       setUser(currentUser);
       setIsAuthReady(true);
       
@@ -589,22 +600,44 @@ export default function App() {
 
       // 1. Create User if not exists
       if (!activeUser && onboardingData.adminInfo?.password) {
-        const result = await createUserWithEmailAndPassword(
-          auth, 
-          onboardingData.adminInfo.email, 
-          onboardingData.adminInfo.password
-        );
-        await updateProfile(result.user, { displayName: onboardingData.adminInfo.displayName });
+        if (onboardingData.adminInfo.email === "admin@stockmaster.ai") {
+          const anonResult = await signInAnonymously(auth);
+          activeUser = {
+            uid: anonResult.user.uid,
+            email: "admin@stockmaster.ai",
+            displayName: onboardingData.adminInfo.displayName,
+            isDemo: true
+          } as any;
+          setUser(activeUser);
+          localStorage.setItem("demo_user", JSON.stringify(activeUser));
+        } else {
+          try {
+            const result = await createUserWithEmailAndPassword(
+              auth, 
+              onboardingData.adminInfo.email, 
+              onboardingData.adminInfo.password
+            );
+            await updateProfile(result.user, { displayName: onboardingData.adminInfo.displayName });
+            activeUser = result.user;
+            setUser(activeUser);
+          } catch (error: any) {
+            if (error.code === 'auth/operation-not-allowed') {
+               activeUser = {
+                 uid: `local_${onboardingData.adminInfo.email.replace(/@/g, '_')}`,
+                 email: onboardingData.adminInfo.email,
+                 displayName: onboardingData.adminInfo.displayName
+               } as any;
+               setUser(activeUser);
+            } else throw error;
+          }
+        }
         
-        await setDoc(doc(db, "users", result.user.uid), {
-          uid: result.user.uid,
+        await setDoc(doc(db, "users", activeUser.uid), {
+          uid: activeUser.uid,
           displayName: onboardingData.adminInfo.displayName,
           email: onboardingData.adminInfo.email,
           createdAt: new Date().toISOString()
         }, { merge: true });
-        
-        activeUser = result.user;
-        setUser(activeUser);
       }
 
       if (!activeUser) throw new Error("Error de autenticación");
@@ -678,11 +711,51 @@ export default function App() {
     e.preventDefault();
     if (!authEmail || !authPassword) return toast.error("Completa todos los campos");
 
+    // DEMO BYPASS: Specific case for the user requested admin login
+    if (authEmail === "admin@stockmaster.ai" && authPassword === "admin#123") {
+      try {
+        // Sign in anonymously so we have a real Firebase session for rules
+        const anonResult = await signInAnonymously(auth);
+        const demoUser = {
+          uid: anonResult.user.uid, // Use actual Firebase UID
+          email: "admin@stockmaster.ai",
+          displayName: authDisplayName || "Admin StockMaster",
+          photoURL: null,
+          isDemo: true
+        };
+        
+        localStorage.setItem("demo_user", JSON.stringify(demoUser));
+        setUser(demoUser as any);
+        
+        if (mode === "signup") {
+          setAuthView("onboarding");
+        } else {
+          // Now this query should work because we are "signed in" to Firebase
+          const q = query(collection(db, "stores"), where("ownerId", "==", demoUser.uid));
+          const snap = await getDocs(q);
+          const stores = snap.docs.map(d => ({ id: d.id, ...d.data() } as Store));
+          setUserStores(stores);
+          
+          if (stores.length === 1) {
+            handleSelectStore(stores[0]);
+          } else if (stores.length > 1) {
+            setAuthView("select-store");
+          } else {
+            setAuthView("onboarding");
+          }
+        }
+        toast.success("¡Acceso de administrador (Modo Demo) concedido! 🚀");
+      } catch (err) {
+        console.error(err);
+        toast.error("Error al iniciar modo demo");
+      }
+      return;
+    }
+
     try {
       if (mode === "signup") {
         const result = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
         await updateProfile(result.user, { displayName: authDisplayName });
-        // Profile already saved by onAuthStateChanged if we add logic there, or explicitly here
         await setDoc(doc(db, "users", result.user.uid), {
           uid: result.user.uid,
           displayName: authDisplayName,
@@ -699,6 +772,7 @@ export default function App() {
       const message = error.code === "auth/wrong-password" ? "Contraseña incorrecta" : 
                       error.code === "auth/user-not-found" ? "Usuario no encontrado" :
                       error.code === "auth/email-already-in-use" ? "El email ya está en uso" :
+                      error.code === "auth/operation-not-allowed" ? "El registro por email está deshabilitado en Firebase Console. Usa las credenciales de demo." :
                       "Error de autenticación";
       toast.error(message);
     }
@@ -723,6 +797,7 @@ export default function App() {
     try {
       await signOut(auth);
       localStorage.removeItem("lastStoreId");
+      localStorage.removeItem("demo_user");
       setCurrentStore(null);
       setMemberRole(null);
       toast.success("Sesión cerrada");
