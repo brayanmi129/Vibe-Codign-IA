@@ -35,7 +35,8 @@ import {
   CardContent, 
   CardDescription, 
   CardHeader, 
-  CardTitle 
+  CardTitle,
+  CardFooter
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,24 +114,25 @@ import {
 import { Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord, Store, UserRole, StoreMember } from "./types";
 import { getAIReplenishmentSuggestions, getAIBusinessAnalysis } from "./lib/inventoryService";
 import { reseedDatabase } from "./lib/seed";
-import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus } from "lucide-react";
+import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus, Settings, ChevronRight } from "lucide-react";
 import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
 import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard";
+import Sketch from '@uiw/react-color-sketch';
 
 // Sample Data
 // Massive Demo Data Generation
 const generateDemoData = (storeId: string) => {
   const products: Product[] = [
-    { id: 'p1', name: 'MacBook Pro M3', brand: 'Apple', category: 'Laptops', price: 2499, quantity: 15, minStockLevel: 5, code: 'MAC-M3-01' },
-    { id: 'p2', name: 'Dell XPS 15', brand: 'Dell', category: 'Laptops', price: 1899, quantity: 8, minStockLevel: 3, code: 'DELL-XPS-15' },
-    { id: 'p3', name: 'Keyboard MX Keys', brand: 'Logitech', category: 'Periféricos', price: 109, quantity: 45, minStockLevel: 10, code: 'LOGI-MX' },
-    { id: 'p4', name: 'Monitor 4K 32"', brand: 'Samsung', category: 'Monitores', price: 599, quantity: 12, minStockLevel: 4, code: 'SAM-4K-32' },
-    { id: 'p5', name: 'Mouse MX Master 3S', brand: 'Logitech', category: 'Periféricos', price: 99, quantity: 30, minStockLevel: 8, code: 'LOGI-M3S' },
-    { id: 'p6', name: 'iPad Air', brand: 'Apple', category: 'Tablets', price: 599, quantity: 20, minStockLevel: 5, code: 'IPAD-AIR' },
-    { id: 'p7', name: 'Sony WH-1000XM5', brand: 'Sony', category: 'Audio', price: 349, quantity: 25, minStockLevel: 6, code: 'SONY-XM5' },
-    { id: 'p8', name: 'SSD 2TB NVMe', brand: 'Samsung', category: 'Componentes', price: 179, quantity: 50, minStockLevel: 15, code: 'SS-2TB' },
-    { id: 'p9', name: 'RTX 4080', brand: 'NVIDIA', category: 'Componentes', price: 1199, quantity: 5, minStockLevel: 2, code: 'RTX-4080' },
-    { id: 'p10', name: 'Stream Deck XL', brand: 'Elgato', category: 'Streaming', price: 249, quantity: 10, minStockLevel: 3, code: 'ELGATO-XL' },
+    { id: 'p1', name: 'MacBook Pro M3', brand: 'Apple', category: 'Laptops', price: 2499, quantity: 15, minStockLevel: 5, code: 'MAC-M3-01', storeId, lastUpdated: new Date().toISOString() },
+    { id: 'p2', name: 'Dell XPS 15', brand: 'Dell', category: 'Laptops', price: 1899, quantity: 8, minStockLevel: 3, code: 'DELL-XPS-15', storeId, lastUpdated: new Date().toISOString() },
+    { id: 'p3', name: 'Keyboard MX Keys', brand: 'Logitech', category: 'Periféricos', price: 109, quantity: 45, minStockLevel: 10, code: 'LOGI-MX', storeId, lastUpdated: new Date().toISOString() },
+    { id: 'p4', name: 'Monitor 4K 32"', brand: 'Samsung', category: 'Monitores', price: 599, quantity: 12, minStockLevel: 4, code: 'SAM-4K-32', storeId, lastUpdated: new Date().toISOString() },
+    { id: 'p5', name: 'Mouse MX Master 3S', brand: 'Logitech', category: 'Periféricos', price: 99, quantity: 30, minStockLevel: 8, code: 'LOGI-M3S', storeId, lastUpdated: new Date().toISOString() },
+    { id: 'p6', name: 'iPad Air', brand: 'Apple', category: 'Tablets', price: 599, quantity: 20, minStockLevel: 5, code: 'IPAD-AIR', storeId, lastUpdated: new Date().toISOString() },
+    { id: 'p7', name: 'Sony WH-1000XM5', brand: 'Sony', category: 'Audio', price: 349, quantity: 25, minStockLevel: 6, code: 'SONY-XM5', storeId, lastUpdated: new Date().toISOString() },
+    { id: 'p8', name: 'SSD 2TB NVMe', brand: 'Samsung', category: 'Componentes', price: 179, quantity: 50, minStockLevel: 15, code: 'SS-2TB', storeId, lastUpdated: new Date().toISOString() },
+    { id: 'p9', name: 'RTX 4080', brand: 'NVIDIA', category: 'Componentes', price: 1199, quantity: 5, minStockLevel: 2, code: 'RTX-4080', storeId, lastUpdated: new Date().toISOString() },
+    { id: 'p10', name: 'Stream Deck XL', brand: 'Elgato', category: 'Streaming', price: 249, quantity: 10, minStockLevel: 3, code: 'ELGATO-XL', storeId, lastUpdated: new Date().toISOString() },
   ];
 
   // Add more variety to reach 30+ items
@@ -143,7 +145,9 @@ const generateDemoData = (storeId: string) => {
       price: Math.floor(Math.random() * 100) + 20,
       quantity: Math.floor(Math.random() * 20) + 5,
       minStockLevel: 10,
-      code: `ACC-${i}`
+      code: `ACC-${i}`,
+      storeId,
+      lastUpdated: new Date().toISOString()
     });
   }
 
@@ -162,12 +166,14 @@ const generateDemoData = (storeId: string) => {
       date: saleDate.toISOString(),
       items: [{
         productId: randomProduct.id,
-        name: randomProduct.name,
-        price: randomProduct.price,
-        quantity: qty
+        productName: randomProduct.name,
+        unitPrice: randomProduct.price,
+        quantity: qty,
+        totalPrice: randomProduct.price * qty
       }],
-      total: randomProduct.price * qty,
-      userId: 'admin_demo_id'
+      totalAmount: randomProduct.price * qty,
+      userId: 'admin_demo_id',
+      storeId
     });
   }
 
@@ -175,17 +181,19 @@ const generateDemoData = (storeId: string) => {
 };
 
 const INITIAL_PRODUCTS: Product[] = [
-  { id: "1", name: "Leche Entera 1L", code: "LEC001", brand: "Colun", price: 4200, quantity: 45, category: "Lácteos", minStockLevel: 10, lastUpdated: new Date().toISOString() },
-  { id: "2", name: "Pan de Molde", code: "PAN002", brand: "Ideal", price: 6500, quantity: 8, category: "Panadería", minStockLevel: 15, lastUpdated: new Date().toISOString() },
-  { id: "3", name: "Arroz Extra 1kg", code: "ARR003", brand: "Tucapel", price: 3800, quantity: 60, category: "Despensa", minStockLevel: 20, lastUpdated: new Date().toISOString() },
-  { id: "4", name: "Detergente Líquido", code: "DET004", brand: "Omo", price: 24500, quantity: 5, category: "Limpieza", minStockLevel: 8, lastUpdated: new Date().toISOString() },
-  { id: "5", name: "Café Molido 250g", code: "CAF005", brand: "Nescafé", price: 12900, quantity: 25, category: "Despensa", minStockLevel: 10, lastUpdated: new Date().toISOString() },
+  { id: "1", storeId: "demo", name: "Leche Entera 1L", code: "LEC001", brand: "Colun", price: 4200, quantity: 45, category: "Lácteos", minStockLevel: 10, lastUpdated: new Date().toISOString() },
+  { id: "2", storeId: "demo", name: "Pan de Molde", code: "PAN002", brand: "Ideal", price: 6500, quantity: 8, category: "Panadería", minStockLevel: 15, lastUpdated: new Date().toISOString() },
+  { id: "3", storeId: "demo", name: "Arroz Extra 1kg", code: "ARR003", brand: "Tucapel", price: 3800, quantity: 60, category: "Despensa", minStockLevel: 20, lastUpdated: new Date().toISOString() },
+  { id: "4", storeId: "demo", name: "Detergente Líquido", code: "DET004", brand: "Omo", price: 24500, quantity: 5, category: "Limpieza", minStockLevel: 8, lastUpdated: new Date().toISOString() },
+  { id: "5", storeId: "demo", name: "Café Molido 250g", code: "CAF005", brand: "Nescafé", price: 12900, quantity: 25, category: "Despensa", minStockLevel: 10, lastUpdated: new Date().toISOString() },
 ];
 
 const INITIAL_SALES: SaleRecord[] = [
   // Hoy
   { 
     id: "s_today_1", 
+    storeId: "demo",
+    userId: "demo",
     items: [
       { productId: "1", productName: "Leche Entera 1L", quantity: 3, unitPrice: 4200, totalPrice: 12600 },
       { productId: "2", productName: "Pan de Molde", quantity: 1, unitPrice: 6500, totalPrice: 6500 }
@@ -195,6 +203,8 @@ const INITIAL_SALES: SaleRecord[] = [
   },
   { 
     id: "s_today_2", 
+    storeId: "demo",
+    userId: "demo",
     items: [
       { productId: "3", productName: "Arroz Extra 1kg", quantity: 2, unitPrice: 3800, totalPrice: 7600 },
       { productId: "5", productName: "Café Molido 250g", quantity: 1, unitPrice: 12900, totalPrice: 12900 }
@@ -205,6 +215,8 @@ const INITIAL_SALES: SaleRecord[] = [
   // Ayer
   { 
     id: "s_yest_1", 
+    storeId: "demo",
+    userId: "demo",
     items: [
       { productId: "4", productName: "Detergente Líquido", quantity: 1, unitPrice: 24500, totalPrice: 24500 },
       { productId: "1", productName: "Leche Entera 1L", quantity: 6, unitPrice: 4200, totalPrice: 25200 }
@@ -214,6 +226,8 @@ const INITIAL_SALES: SaleRecord[] = [
   },
   { 
     id: "s_yest_2", 
+    storeId: "demo",
+    userId: "demo",
     items: [
       { productId: "2", productName: "Pan de Molde", quantity: 4, unitPrice: 6500, totalPrice: 26000 }
     ], 
@@ -223,6 +237,8 @@ const INITIAL_SALES: SaleRecord[] = [
   // Hace 2 días
   { 
     id: "s_2d_1", 
+    storeId: "demo",
+    userId: "demo",
     items: [
       { productId: "3", productName: "Arroz Extra 1kg", quantity: 10, unitPrice: 3800, totalPrice: 38000 },
       { productId: "1", productName: "Leche Entera 1L", quantity: 4, unitPrice: 4200, totalPrice: 16800 }
@@ -233,6 +249,8 @@ const INITIAL_SALES: SaleRecord[] = [
   // Hace 3 días
   { 
     id: "s_3d_1", 
+    storeId: "demo",
+    userId: "demo",
     items: [
       { productId: "5", productName: "Café Molido 250g", quantity: 3, unitPrice: 12900, totalPrice: 38700 },
       { productId: "2", productName: "Pan de Molde", quantity: 2, unitPrice: 6500, totalPrice: 13000 }
@@ -243,6 +261,8 @@ const INITIAL_SALES: SaleRecord[] = [
   // Hace 4 días
   { 
     id: "s_4d_1", 
+    storeId: "demo",
+    userId: "demo",
     items: [
       { productId: "1", productName: "Leche Entera 1L", quantity: 12, unitPrice: 4200, totalPrice: 50400 }
     ], 
@@ -252,6 +272,8 @@ const INITIAL_SALES: SaleRecord[] = [
   // Hace 5 días
   { 
     id: "s_5d_1", 
+    storeId: "demo",
+    userId: "demo",
     items: [
       { productId: "4", productName: "Detergente Líquido", quantity: 2, unitPrice: 24500, totalPrice: 49000 },
       { productId: "3", productName: "Arroz Extra 1kg", quantity: 5, unitPrice: 3800, totalPrice: 19000 }
@@ -262,6 +284,8 @@ const INITIAL_SALES: SaleRecord[] = [
   // Hace 6 días
   { 
     id: "s_6d_1", 
+    storeId: "demo",
+    userId: "demo",
     items: [
       { productId: "2", productName: "Pan de Molde", quantity: 8, unitPrice: 6500, totalPrice: 52000 },
       { productId: "1", productName: "Leche Entera 1L", quantity: 2, unitPrice: 4200, totalPrice: 8400 }
@@ -294,6 +318,8 @@ export default function App() {
   const [userStores, setUserStores] = useState<Store[]>([]);
   const [memberRole, setMemberRole] = useState<UserRole | null>(null);
   const [isStoreLoading, setIsStoreLoading] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [tempBranding, setTempBranding] = useState<any>(null);
   
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<SaleRecord[]>([]);
@@ -599,6 +625,7 @@ export default function App() {
       if (memberDoc.exists()) {
         setMemberRole(memberDoc.data().role as UserRole);
         setCurrentStore(store);
+        setTempBranding(store.branding || { primaryColor: '#4f46e5', secondaryColor: '#4338ca', backgroundColor: '#f8fafc' });
         localStorage.setItem("lastStoreId", store.id);
         toast.success(`Entrando a ${store.name}`);
       } else {
@@ -683,6 +710,7 @@ export default function App() {
       // 3. Add Admin Member
       const adminMember: StoreMember = {
         userId: activeUser.uid,
+        storeId,
         role: "admin",
         email: activeUser.email!,
         displayName: activeUser.displayName || activeUser.email?.split("@")[0]
@@ -804,10 +832,28 @@ export default function App() {
     }
   };
 
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentStore || !tempBranding) return;
+    
+    setIsSavingSettings(true);
+    try {
+      await updateDoc(doc(db, "stores", currentStore.id), {
+        branding: tempBranding
+      });
+      setCurrentStore(prev => prev ? ({ ...prev, branding: tempBranding }) : null);
+      toast.success("Ajustes guardados correctamente ✨");
+    } catch (error) {
+      toast.error("Error al guardar los ajustes");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   const [members, setMembers] = useState<StoreMember[]>([]);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<StoreRole>("employee");
+  const [inviteRole, setInviteRole] = useState<UserRole>("employee");
 
   // Sync Store Members
   useEffect(() => {
@@ -843,7 +889,7 @@ export default function App() {
     }
   };
 
-  const handleUpdateMemberRole = async (memberEmail: string, newRole: StoreRole) => {
+  const handleUpdateMemberRole = async (memberEmail: string, newRole: UserRole) => {
     if (!currentStore || !isAdmin) return;
     try {
       const memberId = memberEmail.replace(/\./g, "_");
@@ -880,8 +926,9 @@ export default function App() {
     
     try {
       const id = editingProduct?.id || Math.random().toString(36).substr(2, 9);
-      const newProduct = {
+      const newProduct: Product = {
         id,
+        storeId: currentStore!.id,
         name,
         code: (formData.get("code") as string) || generateProductCode(name),
         brand: (formData.get("brand") as string) || "Genérico",
@@ -892,27 +939,27 @@ export default function App() {
         lastUpdated: new Date().toISOString()
       };
 
-      await setDoc(doc(db, "users", user.uid, "products", id), newProduct);
+      await setDoc(doc(db, "stores", currentStore!.id, "products", id), newProduct);
       toast.success(editingProduct ? "Producto actualizado" : "Producto añadido");
       setIsAddDialogOpen(false);
       setEditingProduct(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/products`);
+      handleFirestoreError(error, OperationType.WRITE, `stores/${currentStore!.id}/products`);
     }
   };
 
   const handleDeleteProduct = async (id: string) => {
-    if (!user) return;
+    if (!currentStore) return;
     try {
-      await deleteDoc(doc(db, "users", user.uid, "products", id));
+      await deleteDoc(doc(db, "stores", currentStore.id, "products", id));
       toast.success("Producto eliminado");
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `users/${user.uid}/products/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `stores/${currentStore.id}/products/${id}`);
     }
   };
 
   const handleConfirmSale = async () => {
-    if (!user) return toast.error("Debes iniciar sesión para realizar ventas");
+    if (!user || !currentStore) return toast.error("Debes iniciar sesión para realizar ventas");
     if (cart.length === 0) return;
 
     try {
@@ -921,6 +968,7 @@ export default function App() {
       
       const newSale: SaleRecord = {
         id: saleId,
+        storeId: currentStore.id,
         items: cart,
         totalAmount,
         date: new Date().toISOString(),
@@ -928,13 +976,13 @@ export default function App() {
       };
 
       // 1. Create sale record
-      await setDoc(doc(db, "users", user.uid, "sales", saleId), newSale);
+      await setDoc(doc(db, "stores", currentStore.id, "sales", saleId), newSale);
 
       // 2. Update product quantities
       for (const item of cart) {
         const product = products.find(p => p.id === item.productId);
         if (product) {
-          await updateDoc(doc(db, "users", user.uid, "products", product.id), {
+          await updateDoc(doc(db, "stores", currentStore.id, "products", product.id), {
             quantity: product.quantity - item.quantity,
             lastUpdated: new Date().toISOString()
           });
@@ -945,13 +993,13 @@ export default function App() {
       toast.success("Venta confirmada con éxito");
       setActiveTab("dashboard");
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/sales`);
+      handleFirestoreError(error, OperationType.WRITE, `stores/${currentStore.id}/sales`);
     }
   };
 
   const handleRestock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !currentStore) return;
     if (!restockProductId || !restockQuantity) return;
 
     try {
@@ -963,17 +1011,19 @@ export default function App() {
       const restockId = `restock_${Date.now()}`;
       const newRestock: RestockRecord = {
         id: restockId,
+        storeId: currentStore.id,
         productId: restockProductId,
         productName: product.name,
         quantity: qty,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        userId: user.uid
       };
 
       // 1. Create restock record
-      await setDoc(doc(db, "users", user.uid, "restocks", restockId), newRestock);
+      await setDoc(doc(db, "stores", currentStore.id, "restocks", restockId), newRestock);
 
       // 2. Update product quantity
-      await updateDoc(doc(db, "users", user.uid, "products", product.id), {
+      await updateDoc(doc(db, "stores", currentStore.id, "products", product.id), {
         quantity: product.quantity + qty,
         lastUpdated: new Date().toISOString()
       });
@@ -982,7 +1032,7 @@ export default function App() {
       setRestockQuantity("");
       toast.success(`Se han añadido ${qty} unidades a ${product.name}`);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/restocks`);
+      handleFirestoreError(error, OperationType.WRITE, `stores/${currentStore.id}/restocks`);
     }
   };
 
@@ -1510,6 +1560,18 @@ export default function App() {
             label="Insights IA"
             primaryColor={currentStore?.branding?.primaryColor}
           />
+          {memberRole === "admin" && (
+            <NavItem 
+              active={activeTab === "settings"} 
+              onClick={() => {
+                setActiveTab("settings");
+                setTempBranding(currentStore?.branding || { primaryColor: '#4f46e5', secondaryColor: '#4338ca', backgroundColor: '#f8fafc' });
+              }}
+              icon={<Settings size={20} />}
+              label="Ajustes"
+              primaryColor={currentStore?.branding?.primaryColor}
+            />
+          )}
         </nav>
 
         <div className="mt-auto pt-8 border-t border-slate-100 space-y-4">
@@ -1539,8 +1601,7 @@ export default function App() {
 
       {/* Main Content */}
       <main 
-        className="flex-1 min-h-screen transition-colors duration-500"
-        style={{ backgroundColor: currentStore?.branding?.backgroundColor || "#F8FAFC" }}
+        className="flex-1 min-h-screen transition-colors duration-500 bg-brand-bg"
       >
         <div className="max-w-7xl mx-auto p-6 md:p-10 lg:p-12">
           <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
@@ -1551,6 +1612,7 @@ export default function App() {
                  activeTab === "products" ? "Catálogo de Productos" :
                  activeTab === "new-sale" ? "Nueva Venta" :
                  activeTab === "sales" ? "Reporte de Ventas" :
+                 activeTab === "settings" ? "Ajustes de Tienda" :
                  "Inteligencia Artificial"}
               </h2>
               <p className="text-slate-500 mt-1 font-medium">Panel de Control: {currentStore?.name}</p>
@@ -1577,9 +1639,8 @@ export default function App() {
                 <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                   <DialogTrigger render={
                     <Button 
-                      className="text-white shadow-lg px-6 h-11" 
+                      className="bg-brand-primary text-white shadow-lg px-6 h-11" 
                       onClick={() => setEditingProduct(null)}
-                      style={{ backgroundColor: currentStore?.branding?.primaryColor || "#4F46E5" }}
                     >
                       <Plus size={18} className="mr-2" /> Nuevo Producto
                     </Button>
@@ -2114,9 +2175,11 @@ export default function App() {
                             
                             const newRestock: RestockRecord = {
                               id: Math.random().toString(36).substr(2, 9),
+                              storeId: currentStore?.id || "demo",
                               productId: restockProductId,
                               quantity: qty,
                               date: new Date().toISOString(),
+                              userId: user?.uid || "demo"
                             };
                             setRestocks([newRestock, ...restocks]);
                             setRestockQuantity("");
@@ -2750,6 +2813,190 @@ export default function App() {
               </div>
             </motion.div>
           )}
+          {activeTab === "settings" && (
+            <motion.div 
+              key="settings"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="space-y-8"
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-1 space-y-6">
+                  <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
+                    <CardHeader className="bg-slate-50 border-b border-slate-100">
+                      <CardTitle className="text-lg">Información General</CardTitle>
+                      <CardDescription>Detalles básicos de tu tienda.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-4">
+                      <div className="space-y-2">
+                        <Label>Nombre de la Tienda</Label>
+                        <Input 
+                          value={currentStore?.name} 
+                          onChange={(e) => setCurrentStore(prev => prev ? ({ ...prev, name: e.target.value }) : null)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Tipo de Negocio</Label>
+                        <Select value={currentStore?.businessType} onValueChange={(val) => setCurrentStore(prev => prev ? ({ ...prev, businessType: val }) : null)}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="tech">Tecnología</SelectItem>
+                            <SelectItem value="fashion">Moda</SelectItem>
+                            <SelectItem value="food">Alimentos</SelectItem>
+                            <SelectItem value="health">Salud</SelectItem>
+                            <SelectItem value="other">Otro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>ID de Tienda</Label>
+                        <Input value={currentStore?.id} disabled className="bg-slate-50 font-mono text-xs" />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-indigo-600 text-white border-none shadow-lg shadow-indigo-100">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <ShieldCheck size={20} />
+                        Acceso de Administrador
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-indigo-100">
+                        Como administrador, tienes control total sobre la configuración visual y los miembros del equipo.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="lg:col-span-2 space-y-6">
+                  <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
+                    <CardHeader className="bg-slate-50 border-b border-slate-100">
+                      <CardTitle className="text-lg">Personalización de Marca (Branding)</CardTitle>
+                      <CardDescription>Define los colores que identifican tu negocio.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-8">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                        <div className="space-y-8">
+                          <div className="space-y-4">
+                            <Label className="text-sm font-bold flex items-center gap-2">
+                              Color Principal
+                              <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: tempBranding?.primaryColor }} />
+                            </Label>
+                            <div className="flex justify-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                              <Sketch 
+                                color={tempBranding?.primaryColor} 
+                                onChange={(color) => setTempBranding(prev => ({ ...prev, primaryColor: color.hex }))}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <Label className="text-sm font-bold flex items-center gap-2">
+                              Color Secundario
+                              <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: tempBranding?.secondaryColor }} />
+                            </Label>
+                            <div className="flex justify-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                              <Sketch 
+                                color={tempBranding?.secondaryColor} 
+                                onChange={(color) => setTempBranding(prev => ({ ...prev, secondaryColor: color.hex }))}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <Label className="text-sm font-bold flex items-center gap-2">
+                              Color de Fondo
+                              <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: tempBranding?.backgroundColor }} />
+                            </Label>
+                            <div className="flex justify-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                              <Sketch 
+                                color={tempBranding?.backgroundColor} 
+                                onChange={(color) => setTempBranding(prev => ({ ...prev, backgroundColor: color.hex }))}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-6">
+                          <Label className="text-sm font-bold">Vista Previa Real-Time</Label>
+                          <div 
+                            className="w-full aspect-[4/3] rounded-3xl border-2 border-slate-200 shadow-inner p-6 flex flex-col gap-4 transition-all duration-300"
+                            style={{ backgroundColor: tempBranding?.backgroundColor }}
+                          >
+                            <div className="flex items-center justify-between bg-white shadow-sm p-3 rounded-2xl">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl" style={{ backgroundColor: tempBranding?.primaryColor }} />
+                                <div className="space-y-1">
+                                  <div className="w-20 h-2 rounded-full bg-slate-100" />
+                                  <div className="w-12 h-1.5 rounded-full bg-slate-50" />
+                                </div>
+                              </div>
+                              <div className="w-10 h-10 rounded-full bg-slate-50" />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 flex-1">
+                              <div className="bg-white rounded-2xl p-4 shadow-sm flex flex-col justify-between border border-slate-50">
+                                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${tempBranding?.primaryColor}20` }}>
+                                  <div className="w-5 h-5 rounded-md" style={{ backgroundColor: tempBranding?.primaryColor }} />
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="w-full h-2 rounded-full bg-slate-50" />
+                                  <div className="w-2/3 h-4 rounded-full" style={{ backgroundColor: tempBranding?.primaryColor }} />
+                                </div>
+                              </div>
+                              <div className="bg-white rounded-2xl p-4 shadow-sm flex flex-col justify-between border border-slate-50">
+                                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${tempBranding?.secondaryColor}20` }}>
+                                  <div className="w-5 h-5 rounded-md" style={{ backgroundColor: tempBranding?.secondaryColor }} />
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="w-full h-2 rounded-full bg-slate-50" />
+                                  <div className="w-2/3 h-4 rounded-full" style={{ backgroundColor: tempBranding?.secondaryColor }} />
+                                </div>
+                              </div>
+                            </div>
+
+                            <Button 
+                              className="w-full rounded-2xl h-12 font-bold shadow-lg"
+                              style={{ backgroundColor: tempBranding?.primaryColor, color: '#fff' }}
+                            >
+                              Botón de Ejemplo
+                            </Button>
+                          </div>
+
+                          <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+                            <p className="text-xs text-amber-700 leading-relaxed font-medium">
+                              💡 Tip: Los colores que elijas se aplicarán automáticamente a todos los elementos clave de la interfaz, incluyendo botones, iconos activos y fondos.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                    <CardFooter className="bg-slate-50 border-t border-slate-100 p-6 flex justify-end">
+                      <Button 
+                        onClick={handleSaveSettings} 
+                        disabled={isSavingSettings}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[200px] h-12 shadow-lg shadow-indigo-100 rounded-xl"
+                      >
+                        {isSavingSettings ? (
+                          <div className="flex items-center gap-2">
+                            <RefreshCw className="animate-spin w-4 h-4" />
+                            Guardando...
+                          </div>
+                        ) : (
+                          "Guardar Cambios Visuales"
+                        )}
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
         </div>
       </main>
@@ -2765,12 +3012,9 @@ function NavItem({ active, onClick, icon, label, primaryColor }: { active: boole
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
         active 
-          ? "text-white shadow-lg" 
-          : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+          ? "bg-brand-primary text-white shadow-lg shadow-brand-primary/20" 
+          : "text-slate-500 hover:bg-brand-primary/5 hover:text-brand-primary"
       }`}
-      style={{ 
-        backgroundColor: active ? (primaryColor || "#4F46E5") : 'transparent',
-      }}
     >
       {icon}
       <span className="font-medium">{label}</span>

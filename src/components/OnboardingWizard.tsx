@@ -83,10 +83,10 @@ const CATEGORIES = [
 ];
 
 const COLOR_PRESETS = [
-  { name: 'Azul Moderno', primary: '#2563EB', secondary: '#1E40AF', bg: '#F8FAFC' },
-  { name: 'Verde SaaS', primary: '#10B981', secondary: '#047857', bg: '#F0FDF4' },
-  { name: 'Morado Tech', primary: '#7C3AED', secondary: '#5B21B6', bg: '#F5F3FF' },
-  { name: 'Oscuro Elegante', primary: '#3B82F6', secondary: '#1D4ED8', bg: '#0F172A', isDark: true },
+  { name: 'Azul Moderno', primaryColor: '#2563EB', secondaryColor: '#1E40AF', backgroundColor: '#F8FAFC' },
+  { name: 'Verde SaaS', primaryColor: '#10B981', secondaryColor: '#047857', backgroundColor: '#F0FDF4' },
+  { name: 'Morado Tech', primaryColor: '#7C3AED', secondaryColor: '#5B21B6', backgroundColor: '#F5F3FF' },
+  { name: 'Oscuro Elegante', primaryColor: '#3B82F6', secondaryColor: '#1D4ED8', backgroundColor: '#0F172A', isDark: true },
 ];
 
 export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: OnboardingWizardProps) {
@@ -321,9 +321,9 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                                   {data.branding.name === preset.name && <CheckCircle2 size={16} className="text-indigo-600" />}
                                 </div>
                                 <div className="flex gap-2 h-8">
-                                  <div className="w-8 h-8 rounded-lg shadow-inner" style={{ backgroundColor: preset.primary }} />
-                                  <div className="w-8 h-8 rounded-lg shadow-inner" style={{ backgroundColor: preset.secondary }} />
-                                  <div className="w-8 h-8 rounded-lg shadow-inner border border-slate-200" style={{ backgroundColor: preset.bg }} />
+                                  <div className="w-8 h-8 rounded-lg shadow-inner" style={{ backgroundColor: preset.primaryColor }} />
+                                  <div className="w-8 h-8 rounded-lg shadow-inner" style={{ backgroundColor: preset.secondaryColor }} />
+                                  <div className="w-8 h-8 rounded-lg shadow-inner border border-slate-200" style={{ backgroundColor: preset.backgroundColor }} />
                                 </div>
                               </button>
                             ))}
@@ -334,12 +334,12 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                           <Label>Vista previa de tu Dashboard</Label>
                           <div 
                             className="w-full h-40 rounded-3xl border-2 border-slate-200 shadow-sm p-4 flex flex-col gap-3 transition-all duration-500 overflow-hidden"
-                            style={{ backgroundColor: data.branding.bg }}
+                            style={{ backgroundColor: data.branding.backgroundColor }}
                           >
                             <header className="flex items-center justify-between bg-white/80 backdrop-blur-sm p-2 rounded-xl border border-slate-100">
                               <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-lg" style={{ backgroundColor: data.branding.primary }} />
-                                <span className={data.branding.isDark ? "text-white text-[10px] font-bold" : "text-slate-900 text-[10px] font-bold"}>
+                                <div className="w-6 h-6 rounded-lg" style={{ backgroundColor: data.branding.primaryColor }} />
+                                <span className={(data.branding as any).isDark ? "text-white text-[10px] font-bold" : "text-slate-900 text-[10px] font-bold"}>
                                   {data.storeName || "Tu Tienda"}
                                 </span>
                               </div>
@@ -348,15 +348,15 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                             <div className="grid grid-cols-3 gap-2 flex-1">
                               <div className="bg-white/90 rounded-xl p-2 flex flex-col justify-end gap-1">
                                 <div className="w-full h-1 rounded bg-slate-100" />
-                                <div className="w-2/3 h-2 rounded-lg" style={{ backgroundColor: data.branding.secondary }} />
+                                <div className="w-2/3 h-2 rounded-lg" style={{ backgroundColor: data.branding.secondaryColor }} />
                               </div>
                               <div className="bg-white/90 rounded-xl p-2 flex flex-col justify-end gap-1">
                                 <div className="w-full h-1 rounded bg-slate-100" />
-                                <div className="w-2/3 h-2 rounded-lg" style={{ backgroundColor: data.branding.primary }} />
+                                <div className="w-2/3 h-2 rounded-lg" style={{ backgroundColor: data.branding.primaryColor }} />
                               </div>
                               <div className="bg-white/90 rounded-xl p-2 flex flex-col justify-end gap-1">
                                 <div className="w-full h-1 rounded bg-slate-100" />
-                                <div className="w-2/3 h-2 rounded-lg" style={{ backgroundColor: data.branding.primary }} />
+                                <div className="w-2/3 h-2 rounded-lg" style={{ backgroundColor: data.branding.primaryColor }} />
                               </div>
                             </div>
                           </div>
@@ -562,7 +562,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                         <div className="grid gap-4">
                           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
                             <div className="flex items-center gap-4 mb-4">
-                              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white" style={{ backgroundColor: data.branding.primary }}>
+                              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white" style={{ backgroundColor: data.branding.primaryColor }}>
                                 <StoreIcon />
                               </div>
                               <div>
@@ -585,9 +585,9 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                           <div className="space-y-2">
                             <Label className="text-[10px] uppercase text-slate-400">Estilo Visual</Label>
                             <div className="flex gap-2">
-                              <div className="flex-1 h-3 rounded-full" style={{ backgroundColor: data.branding.primary }} />
-                              <div className="flex-1 h-3 rounded-full" style={{ backgroundColor: data.branding.secondary }} />
-                              <div className="flex-1 h-3 rounded-full ring-1 ring-slate-100" style={{ backgroundColor: data.branding.bg }} />
+                              <div className="flex-1 h-3 rounded-full" style={{ backgroundColor: data.branding.primaryColor }} />
+                              <div className="flex-1 h-3 rounded-full" style={{ backgroundColor: data.branding.secondaryColor }} />
+                              <div className="flex-1 h-3 rounded-full ring-1 ring-slate-100" style={{ backgroundColor: data.branding.backgroundColor }} />
                             </div>
                           </div>
                         </div>

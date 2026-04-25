@@ -17,9 +17,11 @@ export interface Store {
 
 export interface StoreMember {
   userId: string;
+  storeId: string;
   role: UserRole;
   email: string;
   displayName?: string;
+  joinedAt?: string;
 }
 
 export interface Product {
