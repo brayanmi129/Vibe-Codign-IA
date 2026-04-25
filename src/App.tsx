@@ -86,6 +86,9 @@ import {
   db, 
   googleProvider, 
   signInWithPopup, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   signOut, 
   onAuthStateChanged, 
   collection, 
@@ -93,6 +96,7 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc, 
+  getDoc,
   getDocs, 
   query, 
   where, 
@@ -102,13 +106,71 @@ import {
   serverTimestamp,
   handleFirestoreError,
   OperationType,
-  User
+  User 
 } from "./lib/firebase";
-import { Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord } from "./types";
+import { Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord, Store, UserRole, StoreMember } from "./types";
 import { getAIReplenishmentSuggestions, getAIBusinessAnalysis } from "./lib/inventoryService";
-import { LogIn, LogOut, User as UserIcon } from "lucide-react";
+import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus } from "lucide-react";
+import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
+import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard";
 
 // Sample Data
+// Massive Demo Data Generation
+const generateDemoData = (storeId: string) => {
+  const products: Product[] = [
+    { id: 'p1', name: 'MacBook Pro M3', brand: 'Apple', category: 'Laptops', price: 2499, quantity: 15, minStockLevel: 5, code: 'MAC-M3-01' },
+    { id: 'p2', name: 'Dell XPS 15', brand: 'Dell', category: 'Laptops', price: 1899, quantity: 8, minStockLevel: 3, code: 'DELL-XPS-15' },
+    { id: 'p3', name: 'Keyboard MX Keys', brand: 'Logitech', category: 'Periféricos', price: 109, quantity: 45, minStockLevel: 10, code: 'LOGI-MX' },
+    { id: 'p4', name: 'Monitor 4K 32"', brand: 'Samsung', category: 'Monitores', price: 599, quantity: 12, minStockLevel: 4, code: 'SAM-4K-32' },
+    { id: 'p5', name: 'Mouse MX Master 3S', brand: 'Logitech', category: 'Periféricos', price: 99, quantity: 30, minStockLevel: 8, code: 'LOGI-M3S' },
+    { id: 'p6', name: 'iPad Air', brand: 'Apple', category: 'Tablets', price: 599, quantity: 20, minStockLevel: 5, code: 'IPAD-AIR' },
+    { id: 'p7', name: 'Sony WH-1000XM5', brand: 'Sony', category: 'Audio', price: 349, quantity: 25, minStockLevel: 6, code: 'SONY-XM5' },
+    { id: 'p8', name: 'SSD 2TB NVMe', brand: 'Samsung', category: 'Componentes', price: 179, quantity: 50, minStockLevel: 15, code: 'SS-2TB' },
+    { id: 'p9', name: 'RTX 4080', brand: 'NVIDIA', category: 'Componentes', price: 1199, quantity: 5, minStockLevel: 2, code: 'RTX-4080' },
+    { id: 'p10', name: 'Stream Deck XL', brand: 'Elgato', category: 'Streaming', price: 249, quantity: 10, minStockLevel: 3, code: 'ELGATO-XL' },
+  ];
+
+  // Add more variety to reach 30+ items
+  for(let i = 11; i <= 30; i++) {
+    products.push({
+      id: `p${i}`,
+      name: `Accesorio Tech #${i}`,
+      brand: i % 2 === 0 ? 'Generic' : 'ProTech',
+      category: 'Accesorios',
+      price: Math.floor(Math.random() * 100) + 20,
+      quantity: Math.floor(Math.random() * 20) + 5,
+      minStockLevel: 10,
+      code: `ACC-${i}`
+    });
+  }
+
+  const sales: SaleRecord[] = [];
+  const now = new Date();
+  
+  // Generate ~120 sales over the last 30 days
+  for(let i = 0; i < 120; i++) {
+    const saleDate = new Date();
+    saleDate.setDate(now.getDate() - Math.floor(Math.random() * 30));
+    const randomProduct = products[Math.floor(Math.random() * products.length)];
+    const qty = Math.floor(Math.random() * 3) + 1;
+    
+    sales.push({
+      id: `s_demo_${i}`,
+      date: saleDate.toISOString(),
+      items: [{
+        productId: randomProduct.id,
+        name: randomProduct.name,
+        price: randomProduct.price,
+        quantity: qty
+      }],
+      total: randomProduct.price * qty,
+      userId: 'admin_demo_id'
+    });
+  }
+
+  return { products, sales };
+};
+
 const INITIAL_PRODUCTS: Product[] = [
   { id: "1", name: "Leche Entera 1L", code: "LEC001", brand: "Colun", price: 4200, quantity: 45, category: "Lácteos", minStockLevel: 10, lastUpdated: new Date().toISOString() },
   { id: "2", name: "Pan de Molde", code: "PAN002", brand: "Ideal", price: 6500, quantity: 8, category: "Panadería", minStockLevel: 15, lastUpdated: new Date().toISOString() },
@@ -225,6 +287,11 @@ const formatCurrency = (amount: number) => {
 export default function App() {
   const [user, setUser] = useState<User | any>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [currentStore, setCurrentStore] = useState<Store | null>(null);
+  const [userStores, setUserStores] = useState<Store[]>([]);
+  const [memberRole, setMemberRole] = useState<UserRole | null>(null);
+  const [isStoreLoading, setIsStoreLoading] = useState(false);
+  
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [restocks, setRestocks] = useState<RestockRecord[]>([]);
@@ -240,10 +307,12 @@ export default function App() {
   const [inventoryTab, setInventoryTab] = useState<"status" | "restock">("status");
   const [cart, setCart] = useState<SaleItem[]>([]);
 
-  // Local Login State
-  const [localUsername, setLocalUsername] = useState("");
-  const [localPassword, setLocalPassword] = useState("");
-  const [loginMode, setLoginMode] = useState<"google" | "local">("google");
+  // Auth State
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authDisplayName, setAuthDisplayName] = useState("");
+  const [authView, setAuthView] = useState<"login" | "signup" | "select-store" | "register-store" | "onboarding">("login");
+  const [newStoreName, setNewStoreName] = useState("");
 
   // Sales Filter State
   const [salesDateFilter, setSalesDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -396,160 +465,337 @@ export default function App() {
     return suggestion;
   };
 
+  // Theme Effect
+  useEffect(() => {
+    if (currentStore?.branding) {
+      const root = document.documentElement;
+      root.style.setProperty('--brand-primary', currentStore.branding.primaryColor);
+      root.style.setProperty('--brand-secondary', currentStore.branding.secondaryColor);
+      root.style.setProperty('--brand-bg', currentStore.branding.backgroundColor);
+      
+      // Update shadcn primary if needed, or just use these vars in components
+    } else {
+      const root = document.documentElement;
+      root.style.removeProperty('--brand-primary');
+      root.style.removeProperty('--brand-secondary');
+      root.style.removeProperty('--brand-bg');
+    }
+  }, [currentStore]);
+
   // Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setIsAuthReady(true);
+      
+      if (currentUser) {
+        // Fetch user's stores
+        const q = query(collection(db, "users", currentUser.uid, "userStores"));
+        const qSnapshot = await getDocs(q);
+        const storesIds = qSnapshot.docs.map(doc => doc.id);
+        
+        if (storesIds.length > 0) {
+          const storePromises = storesIds.map(id => getDoc(doc(db, "stores", id)));
+          const storeDocs = await Promise.all(storePromises);
+          const storesData = storeDocs.map(d => ({ ...d.data(), id: d.id } as Store));
+          setUserStores(storesData);
+          
+          // Auto-select store if only one and none saved
+          const savedStoreId = localStorage.getItem("lastStoreId");
+          const selected = storesData.find(s => s.id === savedStoreId) || storesData[0];
+          
+          if (selected) {
+             handleSelectStore(selected);
+          } else {
+            setAuthView("select-store");
+          }
+        } else {
+          setAuthView("onboarding");
+        }
+      } else {
+        setAuthView("login");
+        setCurrentStore(null);
+        setUserStores([]);
+        setMemberRole(null);
+      }
     });
     return () => unsubscribe();
   }, []);
 
-  // Real-time Data Sync
+  // Real-time Data Sync (Scoped to Store)
   useEffect(() => {
-    if (!user) return;
+    if (!user || !currentStore) {
+      setProducts([]);
+      setSales([]);
+      setRestocks([]);
+      return;
+    }
 
-    // Sync Products
-    const qProducts = query(collection(db, "users", user.uid, "products"), orderBy("name"));
-    const unsubProducts = onSnapshot(qProducts, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
-      setProducts(data);
-      
-      // Seed initial data for admin/admin if empty
-      if (data.length === 0 && user.uid === "local-admin") {
-        seedAdminData();
-      }
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/products`));
+    const unsubProducts = onSnapshot(
+      query(collection(db, "stores", currentStore.id, "products"), orderBy("name")), 
+      (snapshot) => {
+        setProducts(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product)));
+      }, 
+      (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/products`)
+    );
 
-    // Sync Sales
-    const qSales = query(collection(db, "users", user.uid, "sales"), orderBy("date", "desc"));
-    const unsubSales = onSnapshot(qSales, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SaleRecord));
-      setSales(data);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/sales`));
+    const unsubSales = onSnapshot(
+      query(collection(db, "stores", currentStore.id, "sales"), orderBy("date", "desc")), 
+      (snapshot) => {
+        setSales(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SaleRecord)));
+      }, 
+      (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/sales`)
+    );
 
-    // Sync Restocks
-    const qRestocks = query(collection(db, "users", user.uid, "restocks"), orderBy("date", "desc"));
-    const unsubRestocks = onSnapshot(qRestocks, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as RestockRecord));
-      setRestocks(data);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/restocks`));
+    const unsubRestocks = onSnapshot(
+      query(collection(db, "stores", currentStore.id, "restocks"), orderBy("date", "desc")), 
+      (snapshot) => {
+        setRestocks(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as RestockRecord)));
+      }, 
+      (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/restocks`)
+    );
 
     return () => {
       unsubProducts();
       unsubSales();
       unsubRestocks();
     };
-  }, [user]);
+  }, [user, currentStore]);
 
-  const seedAdminData = async () => {
-    if (!user || user.uid !== "local-admin") return;
-    
-    toast.info("Inicializando datos de administrador en la base de datos...");
-    
+  const handleSelectStore = async (store: Store) => {
+    setIsStoreLoading(true);
     try {
-      // 1. Seed Products
-      const productPromises = INITIAL_PRODUCTS.map(p => 
-        setDoc(doc(db, "users", user.uid, "products", p.id), {
-          ...p,
-          lastUpdated: new Date().toISOString()
-        })
-      );
-      await Promise.all(productPromises);
-
-      // 2. Seed Sales (Last Week)
-      const salePromises = INITIAL_SALES.map(s => 
-        setDoc(doc(db, "users", user.uid, "sales", s.id), {
-          ...s,
-          userId: user.uid
-        })
-      );
-      await Promise.all(salePromises);
-      
-      toast.success("¡Datos de administrador listos en Firebase!");
-    } catch (error) {
-      console.error("Error seeding admin data:", error);
-      toast.error("Error al inicializar datos en la base de datos");
+      // Get role
+      const memberDoc = await getDoc(doc(db, "stores", store.id, "members", user.uid));
+      if (memberDoc.exists()) {
+        setMemberRole(memberDoc.data().role as UserRole);
+        setCurrentStore(store);
+        localStorage.setItem("lastStoreId", store.id);
+        toast.success(`Entrando a ${store.name}`);
+      } else {
+        toast.error("No tienes acceso a esta tienda");
+      }
+    } catch (e) {
+      toast.error("Error al acceder a la tienda");
+    } finally {
+      setIsStoreLoading(false);
     }
   };
 
-  const handleLogin = async () => {
+  const handleOnboardingComplete = async (onboardingData: OnboardingData) => {
+    setIsStoreLoading(true);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const loggedUser = result.user;
-      
-      // Save user profile to Firestore
-      await setDoc(doc(db, "users", loggedUser.uid), {
-        uid: loggedUser.uid,
-        displayName: loggedUser.displayName,
-        email: loggedUser.email,
-        photoURL: loggedUser.photoURL,
-        lastLogin: new Date().toISOString(),
-        authType: "google"
-      }, { merge: true });
+      let activeUser = user;
 
-      toast.success("Sesión iniciada correctamente");
-    } catch (error) {
-      toast.error("Error al iniciar sesión");
-      console.error(error);
-    }
-  };
+      // 1. Create User if not exists
+      if (!activeUser && onboardingData.adminInfo?.password) {
+        const result = await createUserWithEmailAndPassword(
+          auth, 
+          onboardingData.adminInfo.email, 
+          onboardingData.adminInfo.password
+        );
+        await updateProfile(result.user, { displayName: onboardingData.adminInfo.displayName });
+        
+        await setDoc(doc(db, "users", result.user.uid), {
+          uid: result.user.uid,
+          displayName: onboardingData.adminInfo.displayName,
+          email: onboardingData.adminInfo.email,
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+        
+        activeUser = result.user;
+        setUser(activeUser);
+      }
 
-  const handleLocalLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (localUsername && localPassword) {
-      const isTestAdmin = localUsername === "admin" && localPassword === "admin";
-      const uid = isTestAdmin ? "local-admin" : `local-${localUsername}`;
-      
-      const mockUser = {
-        uid: uid,
-        displayName: isTestAdmin ? "Administrador Local" : localUsername,
-        email: `${localUsername}@stockmaster.local`,
-        photoURL: null
+      if (!activeUser) throw new Error("Error de autenticación");
+
+      // 2. Create Store
+      const storeId = `store_${Math.random().toString(36).substr(2, 9)}`;
+      const newStore: Store = {
+        id: storeId,
+        name: onboardingData.storeName,
+        businessType: onboardingData.businessType,
+        description: onboardingData.aiDescription,
+        ownerId: activeUser.uid,
+        createdAt: new Date().toISOString(),
+        branding: onboardingData.branding
       };
 
-      try {
-        // Save local user profile to Firestore
-        await setDoc(doc(db, "users", uid), {
-          ...mockUser,
-          lastLogin: new Date().toISOString(),
-          authType: "local"
-        }, { merge: true });
+      await setDoc(doc(db, "stores", storeId), newStore);
 
-        setUser(mockUser);
-        localStorage.setItem("stockmaster_local_user", JSON.stringify(mockUser));
-        toast.success(isTestAdmin ? "Sesión iniciada como Admin" : `Bienvenido, ${localUsername}`);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `users/${uid}`);
+      // 3. Add Admin Member
+      const adminMember: StoreMember = {
+        userId: activeUser.uid,
+        role: "admin",
+        email: activeUser.email!,
+        displayName: activeUser.displayName || activeUser.email?.split("@")[0]
+      };
+      await setDoc(doc(db, "stores", storeId, "members", activeUser.uid), adminMember);
+
+      // 4. Add Employees
+      for (const emp of onboardingData.employees) {
+        const memberId = emp.email.replace(/\./g, "_");
+        await setDoc(doc(db, "stores", storeId, "members", memberId), {
+          ...emp,
+          storeId,
+          userId: "", // To be linked on login
+          joinedAt: new Date().toISOString()
+        });
       }
-    } else {
-      toast.error("Credenciales inválidas");
+
+      // 5. Link User
+      await setDoc(doc(db, "users", activeUser.uid, "userStores", storeId), { role: "admin" });
+
+      // 6. Seed Demo Data if admin email
+      if (activeUser.email === "admin@stockmaster.ai") {
+        const { products: demoProducts, sales: demoSales } = generateDemoData(storeId);
+        
+        // Seed Products
+        for (const p of demoProducts) {
+          await setDoc(doc(db, "stores", storeId, "products", p.id), { ...p, storeId });
+        }
+        
+        // Seed Sales
+        for (const s of demoSales) {
+          await setDoc(doc(db, "stores", storeId, "sales", s.id), { ...s, storeId });
+        }
+        
+        toast.info("¡Datos de prueba generados exitosamente! 📊");
+      }
+
+      setUserStores(prev => [...prev, newStore]);
+      handleSelectStore(newStore);
+      toast.success("¡Tienda creada con éxito! 🚀");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Error al completar el onboarding");
+    } finally {
+      setIsStoreLoading(false);
     }
   };
 
-  // Check for local session on mount
-  useEffect(() => {
-    const savedLocalUser = localStorage.getItem("stockmaster_local_user");
-    if (savedLocalUser && !user) {
-      setUser(JSON.parse(savedLocalUser));
+  const handleEmailAuth = async (e: React.FormEvent, mode: "login" | "signup") => {
+    e.preventDefault();
+    if (!authEmail || !authPassword) return toast.error("Completa todos los campos");
+
+    try {
+      if (mode === "signup") {
+        const result = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        await updateProfile(result.user, { displayName: authDisplayName });
+        // Profile already saved by onAuthStateChanged if we add logic there, or explicitly here
+        await setDoc(doc(db, "users", result.user.uid), {
+          uid: result.user.uid,
+          displayName: authDisplayName,
+          email: authEmail,
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+        toast.success("Cuenta creada correctamente");
+      } else {
+        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+        toast.success("Bienvenido");
+      }
+    } catch (error: any) {
+      console.error(error);
+      const message = error.code === "auth/wrong-password" ? "Contraseña incorrecta" : 
+                      error.code === "auth/user-not-found" ? "Usuario no encontrado" :
+                      error.code === "auth/email-already-in-use" ? "El email ya está en uso" :
+                      "Error de autenticación";
+      toast.error(message);
     }
-  }, []);
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      await setDoc(doc(db, "users", result.user.uid), {
+        uid: result.user.uid,
+        displayName: result.user.displayName,
+        email: result.user.email,
+        photoURL: result.user.photoURL,
+        lastLogin: new Date().toISOString()
+      }, { merge: true });
+    } catch (error) {
+      toast.error("Error al iniciar con Google");
+    }
+  };
 
   const handleLogout = async () => {
     try {
-      if (user?.uid?.startsWith("local-")) {
-        setUser(null);
-        localStorage.removeItem("stockmaster_local_user");
-      } else {
-        await signOut(auth);
-      }
+      await signOut(auth);
+      localStorage.removeItem("lastStoreId");
+      setCurrentStore(null);
+      setMemberRole(null);
       toast.success("Sesión cerrada");
     } catch (error) {
       toast.error("Error al cerrar sesión");
     }
   };
 
-  const isAdmin = user?.email === "brakcris129@gmail.com" || user?.uid === "local-admin";
+  const [members, setMembers] = useState<StoreMember[]>([]);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<StoreRole>("employee");
+
+  // Sync Store Members
+  useEffect(() => {
+    if (!currentStore) return;
+    const q = query(collection(db, "stores", currentStore.id, "members"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMembers(snapshot.docs.map(doc => doc.data() as StoreMember));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/members`));
+    return () => unsubscribe();
+  }, [currentStore]);
+
+  const handleInviteMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentStore || !isAdmin) return;
+    
+    try {
+      const memberId = inviteEmail.replace(/\./g, "_"); // Simplified ID
+      const newMember: StoreMember = {
+        userId: "", // Will be linked when user joins, or just use email as identifier for now
+        storeId: currentStore.id,
+        role: inviteRole,
+        email: inviteEmail,
+        displayName: inviteEmail.split("@")[0],
+        joinedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, "stores", currentStore.id, "members", memberId), newMember);
+      toast.success(`Invitación enviada a ${inviteEmail}`);
+      setIsInviteDialogOpen(false);
+      setInviteEmail("");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `stores/${currentStore.id}/members`);
+    }
+  };
+
+  const handleUpdateMemberRole = async (memberEmail: string, newRole: StoreRole) => {
+    if (!currentStore || !isAdmin) return;
+    try {
+      const memberId = memberEmail.replace(/\./g, "_");
+      await updateDoc(doc(db, "stores", currentStore.id, "members", memberId), { role: newRole });
+      toast.success("Rol actualizado");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `stores/${currentStore.id}/members`);
+    }
+  };
+
+  const handleRemoveMember = async (memberEmail: string) => {
+    if (!currentStore || !isAdmin) return;
+    if (memberEmail === user?.email) return toast.error("No puedes eliminarte a ti mismo");
+    
+    try {
+      const memberId = memberEmail.replace(/\./g, "_");
+      await deleteDoc(doc(db, "stores", currentStore.id, "members", memberId));
+      toast.success("Miembro eliminado");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `stores/${currentStore.id}/members`);
+    }
+  };
+
+  const isAdmin = memberRole === "admin";
+  const canEdit = memberRole === "admin" || memberRole === "employee";
 
   // Data Handlers
   const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -717,8 +963,8 @@ export default function App() {
     setIsAnalyzing(true);
     try {
       const [replenishment, analysis] = await Promise.all([
-        getAIReplenishmentSuggestions(products, sales),
-        getAIBusinessAnalysis(products, sales)
+        getAIReplenishmentSuggestions(products, sales, currentStore?.description),
+        getAIBusinessAnalysis(products, sales, currentStore?.description)
       ]);
       setAiInsights([...replenishment, ...analysis]);
       toast.success("Análisis de IA completado");
@@ -775,81 +1021,144 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-xl border-none">
-          <CardHeader className="text-center space-y-2">
-            <div className="mx-auto w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 mb-2">
+  if (!user || !currentStore) {
+    if (user && authView === "onboarding") {
+      return (
+        <OnboardingWizard 
+          currentUser={user} 
+          onComplete={handleOnboardingComplete} 
+          onGoogleSignIn={handleGoogleLogin}
+        />
+      );
+    }
+    
+    if (!user && (authView === "login" || authView === "signup")) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+          <div className="mb-8 flex flex-col items-center">
+            <div className="w-16 h-16 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-indigo-200 mb-4 transform -rotate-3 transition-transform hover:rotate-0">
               <Package className="text-white w-8 h-8" />
             </div>
-            <CardTitle className="text-3xl font-bold text-slate-900">StockMaster AI</CardTitle>
-            <CardDescription className="text-slate-500">
-              Gestión inteligente de inventario y ventas
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">StockMaster <span className="text-indigo-600">Pro</span></h1>
+            <p className="text-slate-500 font-medium">Gestión de inventario para el futuro</p>
+          </div>
+
+          <Card className="w-full max-w-md shadow-2xl border-none p-1 bg-white rounded-3xl overflow-hidden">
+            <CardHeader className="text-center pb-2">
+              <CardTitle className="text-2xl font-bold">Bienvenido</CardTitle>
+              <CardDescription>
+                {authView === "login" ? "Ingresa para gestionar tu inventario" : "Crea tu cuenta administradora"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4">
+              {authView === "login" ? (
+                <form onSubmit={(e) => handleEmailAuth(e, "login")} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input type="email" placeholder="email@ejemplo.com" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required className="h-12 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contraseña</Label>
+                    <Input type="password" placeholder="••••••••" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required className="h-12 rounded-xl" />
+                  </div>
+                  <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100 transition-all">
+                    Iniciar Sesión
+                  </Button>
+                  <div className="text-center">
+                    <Button variant="link" type="button" onClick={() => setAuthView("signup")} className="text-indigo-600">¿No tienes cuenta? Regístrate</Button>
+                  </div>
+                  <div className="relative">
+                    <Separator className="my-6" />
+                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-[10px] text-slate-400 font-bold uppercase">O entra con</span>
+                  </div>
+                  <Button variant="outline" type="button" onClick={handleGoogleLogin} className="w-full h-12 gap-3 border-2 hover:bg-slate-50 rounded-xl">
+                    <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+                    Google Login
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={(e) => handleEmailAuth(e, "signup")} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Nombre Completo</Label>
+                    <Input placeholder="Tu Nombre" value={authDisplayName} onChange={e => setAuthDisplayName(e.target.value)} required className="h-12 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input type="email" placeholder="email@ejemplo.com" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required className="h-12 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contraseña</Label>
+                    <Input type="password" placeholder="Mínimo 6 caracteres" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required className="h-12 rounded-xl" />
+                  </div>
+                  <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100">
+                    Siguiente: Crear Tienda
+                  </Button>
+                  <div className="text-center">
+                    <Button variant="link" type="button" onClick={() => setAuthView("login")} className="text-indigo-600">¿Ya tienes cuenta? Ingresa</Button>
+                  </div>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+          
+          <div className="mt-8 text-center">
+            <p className="text-xs text-slate-400 font-medium">© 2024 StockMaster Pro - Todos los derechos reservados</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-2xl border-none p-1 bg-white rounded-3xl overflow-hidden">
+          <CardHeader className="text-center bg-indigo-600 text-white rounded-2xl m-2 py-8">
+            <div className="mx-auto w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-4">
+              <StoreIcon className="text-white w-8 h-8" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Mis Tiendas</CardTitle>
+            <CardDescription className="text-indigo-100 italic">
+              Selecciona una sucursal para continuar
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6 pt-4">
-            <Tabs value={loginMode} onValueChange={(v: any) => setLoginMode(v)} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="google">Google Login</TabsTrigger>
-                <TabsTrigger value="local">Login Local</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="google" className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl text-indigo-700 text-sm">
-                    <BrainCircuit size={20} />
-                    <span>Análisis de stock con Inteligencia Artificial</span>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl text-emerald-700 text-sm">
-                    <TrendingUp size={20} />
-                    <span>Reportes de ventas en tiempo real</span>
-                  </div>
+          <CardContent className="space-y-4 pt-6">
+            
+            {(authView === "select-store" || authView === "register-store") && (
+              <div className="space-y-4">
+                <div className="grid gap-3 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
+                  {userStores.map(store => (
+                    <Button 
+                      key={store.id} 
+                      variant="outline" 
+                      className="h-20 justify-start px-6 gap-4 bg-white hover:bg-indigo-50/30 border-slate-100 hover:border-indigo-200 transition-all rounded-2xl group"
+                      onClick={() => handleSelectStore(store)}
+                      disabled={isStoreLoading}
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 flex items-center justify-center transition-colors">
+                        <StoreIcon size={20} />
+                      </div>
+                      <div className="text-left flex-1">
+                        <p className="font-bold text-slate-900">{store.name}</p>
+                        <Badge variant="outline" className="text-[10px] text-slate-400 font-normal border-slate-100 lowercase">id: {store.id}</Badge>
+                      </div>
+                      <ChevronRight className="text-slate-300 group-hover:text-indigo-600 transition-colors" size={20} />
+                    </Button>
+                  ))}
                 </div>
-                <Button 
-                  onClick={handleLogin} 
-                  className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white text-lg font-semibold gap-2 shadow-lg shadow-indigo-100"
-                >
-                  <LogIn size={20} />
-                  Iniciar Sesión con Google
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="local" className="space-y-4">
-                <form onSubmit={handleLocalLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="username">Usuario</Label>
-                    <Input 
-                      id="username" 
-                      placeholder="admin" 
-                      value={localUsername}
-                      onChange={(e) => setLocalUsername(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Contraseña</Label>
-                    <Input 
-                      id="password" 
-                      type="password" 
-                      placeholder="••••••••" 
-                      value={localPassword}
-                      onChange={(e) => setLocalPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white">
-                    Entrar al Sistema
+                
+                <div className="grid grid-cols-2 gap-3 mt-6">
+                  <Button variant="outline" onClick={() => setAuthView("onboarding")} className="rounded-xl h-11 border-2">
+                    <Plus size={18} className="mr-2" /> Nueva
                   </Button>
-                  <p className="text-center text-xs text-slate-400">
-                    Usa <span className="font-bold">admin / admin</span> para ver datos de prueba.
-                  </p>
-                </form>
-              </TabsContent>
-            </Tabs>
+                  <Button variant="outline" onClick={handleLogout} className="rounded-xl h-11 border-2 text-rose-600 hover:bg-rose-50 hover:border-rose-100 transition-all">
+                    <LogOut size={18} className="mr-2" /> Salir
+                  </Button>
+                </div>
+              </div>
+            )}
+
           </CardContent>
-          <div className="p-6 justify-center border-t border-slate-100 flex">
-            <p className="text-xs text-slate-400">© 2024 StockMaster AI - Control Total</p>
+          <div className="p-4 text-center border-t border-slate-100">
+             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">StockMaster Multi-Tenant Engine</p>
           </div>
         </Card>
       </div>
@@ -863,10 +1172,15 @@ export default function App() {
         {/* Mobile Header */}
         <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-2">
-          <div className="bg-indigo-600 p-1.5 rounded-lg">
+          <div 
+            className="p-1.5 rounded-lg"
+            style={{ backgroundColor: currentStore?.branding?.primaryColor || "#4F46E5" }}
+          >
             <Package className="text-white w-5 h-5" />
           </div>
-          <h1 className="text-lg font-bold tracking-tight">StockMaster <span className="text-indigo-600">AI</span></h1>
+          <h1 className="text-lg font-bold tracking-tight">
+            {currentStore?.name || "StockMaster"}
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
@@ -893,48 +1207,59 @@ export default function App() {
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="fixed left-0 top-0 h-full w-72 bg-white z-50 p-6 md:hidden shadow-2xl"
             >
-              <div className="flex items-center gap-2 mb-10">
-                <div className="bg-indigo-600 p-2 rounded-lg">
-                  <Package className="text-white w-6 h-6" />
-                </div>
-                <h1 className="text-xl font-bold tracking-tight">StockMaster <span className="text-indigo-600">AI</span></h1>
-              </div>
+        <div className="flex items-center gap-2 mb-10">
+          <div 
+            className="p-2 rounded-lg"
+            style={{ backgroundColor: currentStore?.branding?.primaryColor || "#4F46E5" }}
+          >
+            <Package className="text-white w-6 h-6" />
+          </div>
+          <h1 className="text-xl font-bold tracking-tight">
+            {currentStore?.name || "StockMaster"}
+          </h1>
+        </div>
               <nav className="space-y-2">
                 <NavItem 
                   active={activeTab === "dashboard"} 
                   onClick={() => { setActiveTab("dashboard"); setIsMobileMenuOpen(false); }}
                   icon={<LayoutDashboard size={20} />}
                   label="Dashboard"
+                  primaryColor={currentStore?.branding?.primaryColor}
                 />
                 <NavItem 
                   active={activeTab === "inventory"} 
                   onClick={() => { setActiveTab("inventory"); setIsMobileMenuOpen(false); }}
                   icon={<Package size={20} />}
                   label="Inventario"
+                  primaryColor={currentStore?.branding?.primaryColor}
                 />
                 <NavItem 
                   active={activeTab === "products"} 
                   onClick={() => { setActiveTab("products"); setIsMobileMenuOpen(false); }}
                   icon={<Edit2 size={20} />}
                   label="Productos"
+                  primaryColor={currentStore?.branding?.primaryColor}
                 />
                 <NavItem 
                   active={activeTab === "new-sale"} 
                   onClick={() => { setActiveTab("new-sale"); setIsMobileMenuOpen(false); }}
                   icon={<Plus size={20} />}
                   label="Nueva Venta"
+                  primaryColor={currentStore?.branding?.primaryColor}
                 />
                 <NavItem 
                   active={activeTab === "sales"} 
                   onClick={() => { setActiveTab("sales"); setIsMobileMenuOpen(false); }}
                   icon={<ShoppingCart size={20} />}
                   label="Ventas"
+                  primaryColor={currentStore?.branding?.primaryColor}
                 />
                 <NavItem 
                   active={activeTab === "ai"} 
                   onClick={() => { setActiveTab("ai"); setIsMobileMenuOpen(false); }}
                   icon={<BrainCircuit size={20} />}
                   label="Insights IA"
+                  primaryColor={currentStore?.branding?.primaryColor}
                 />
               </nav>
 
@@ -968,11 +1293,33 @@ export default function App() {
 
       {/* Sidebar / Nav (Desktop) */}
       <div className="sticky left-0 top-0 h-screen w-80 bg-white border-r border-slate-100 p-8 hidden md:flex flex-col shadow-sm z-30">
-        <div className="flex items-center gap-3 mb-12">
-          <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-100">
+        <div className="flex items-center gap-3 mb-10 px-2 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
+          <div 
+            className="p-2.5 rounded-xl shadow-lg transition-transform hover:scale-105"
+            style={{ backgroundColor: currentStore?.branding?.primaryColor || "#4F46E5" }}
+          >
             <Package className="text-white w-6 h-6" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">StockMaster <span className="text-indigo-600">AI</span></h1>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-none">
+              {currentStore?.name || "StockMaster"}
+            </h1>
+            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mt-1">PRO ENGINE</p>
+          </div>
+        </div>
+
+        <div className="mb-8 px-2">
+          <Button 
+            variant="outline" 
+            className="w-full justify-start gap-3 bg-slate-50 border-slate-200 hover:bg-slate-100"
+            onClick={() => setAuthView("select-store")}
+          >
+            <StoreIcon size={18} style={{ color: currentStore?.branding?.primaryColor || "#4F46E5" }} />
+            <div className="text-left overflow-hidden">
+              <p className="text-xs font-semibold text-slate-900 truncate">{currentStore?.name}</p>
+              <p className="text-[10px] text-slate-500 capitalize">{memberRole}</p>
+            </div>
+          </Button>
         </div>
 
         <nav className="space-y-2 flex-1">
@@ -981,36 +1328,51 @@ export default function App() {
             onClick={() => setActiveTab("dashboard")}
             icon={<LayoutDashboard size={20} />}
             label="Dashboard"
+            primaryColor={currentStore?.branding?.primaryColor}
           />
           <NavItem 
             active={activeTab === "inventory"} 
             onClick={() => setActiveTab("inventory")}
             icon={<Package size={20} />}
             label="Inventario"
+            primaryColor={currentStore?.branding?.primaryColor}
           />
           <NavItem 
             active={activeTab === "products"} 
             onClick={() => setActiveTab("products")}
             icon={<Edit2 size={20} />}
             label="Productos"
+            primaryColor={currentStore?.branding?.primaryColor}
           />
+          {isAdmin && (
+            <NavItem 
+              active={activeTab === "team"} 
+              onClick={() => setActiveTab("team")}
+              icon={<Users size={20} />}
+              label="Equipo"
+              primaryColor={currentStore?.branding?.primaryColor}
+            />
+          )}
           <NavItem 
             active={activeTab === "new-sale"} 
             onClick={() => setActiveTab("new-sale")}
             icon={<Plus size={20} />}
             label="Nueva Venta"
+            primaryColor={currentStore?.branding?.primaryColor}
           />
           <NavItem 
             active={activeTab === "sales"} 
             onClick={() => setActiveTab("sales")}
             icon={<ShoppingCart size={20} />}
             label="Ventas"
+            primaryColor={currentStore?.branding?.primaryColor}
           />
           <NavItem 
             active={activeTab === "ai"} 
             onClick={() => setActiveTab("ai")}
             icon={<BrainCircuit size={20} />}
             label="Insights IA"
+            primaryColor={currentStore?.branding?.primaryColor}
           />
         </nav>
 
@@ -1040,7 +1402,10 @@ export default function App() {
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 min-h-screen bg-slate-50/30">
+      <main 
+        className="flex-1 min-h-screen transition-colors duration-500"
+        style={{ backgroundColor: currentStore?.branding?.backgroundColor || "#F8FAFC" }}
+      >
         <div className="max-w-7xl mx-auto p-6 md:p-10 lg:p-12">
           <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
             <div>
@@ -1052,16 +1417,34 @@ export default function App() {
                  activeTab === "sales" ? "Reporte de Ventas" :
                  "Inteligencia Artificial"}
               </h2>
-              <p className="text-slate-500 mt-1 font-medium">Bienvenido de nuevo, aquí está lo que sucede hoy.</p>
+              <p className="text-slate-500 mt-1 font-medium">Panel de Control: {currentStore?.name}</p>
             </div>
             <div className="flex items-center gap-3">
+              {(activeTab === "products" || activeTab === "inventory") && (
+                <ExcelExport 
+                  data={prepareInventoryForExport(products)} 
+                  fileName={`Inventario_${currentStore?.name}_${new Date().toISOString().split('T')[0]}`} 
+                  sheetName="Inventario" 
+                />
+              )}
+              {activeTab === "sales" && (
+                <ExcelExport 
+                  data={prepareSalesForExport(sales)} 
+                  fileName={`Ventas_${currentStore?.name}_${new Date().toISOString().split('T')[0]}`} 
+                  sheetName="Ventas" 
+                />
+              )}
               <Button variant="outline" size="lg" className="bg-white shadow-sm border-slate-200 hover:bg-slate-50" onClick={() => window.location.reload()}>
                 <RefreshCw size={16} className="mr-2" /> Refrescar
               </Button>
-              {activeTab === "products" && (
+              {activeTab === "products" && canEdit && (
                 <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                   <DialogTrigger render={
-                    <Button className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-100 px-6 h-11" onClick={() => setEditingProduct(null)}>
+                    <Button 
+                      className="text-white shadow-lg px-6 h-11" 
+                      onClick={() => setEditingProduct(null)}
+                      style={{ backgroundColor: currentStore?.branding?.primaryColor || "#4F46E5" }}
+                    >
                       <Plus size={18} className="mr-2" /> Nuevo Producto
                     </Button>
                   } />
@@ -1669,6 +2052,139 @@ export default function App() {
             </motion.div>
           )}
 
+          {activeTab === "team" && isAdmin && (
+            <motion.div 
+              key="team"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-6"
+            >
+              <Card className="bg-white border-slate-200 shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-xl font-bold">Gestión de Equipo</CardTitle>
+                    <CardDescription>Administra quién tiene acceso a {currentStore?.name}</CardDescription>
+                  </div>
+                  <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
+                    <DialogTrigger render={
+                      <Button className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                        <UserPlus size={18} className="mr-2" /> Invitar Miembro
+                      </Button>
+                    } />
+                    <DialogContent>
+                      <form onSubmit={handleInviteMember}>
+                        <DialogHeader>
+                          <DialogTitle>Invitar Nuevo Miembro</DialogTitle>
+                          <DialogDescription>
+                            Envía una invitación para unirse a tu tienda.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="grid gap-2">
+                            <Label>Email del invitado</Label>
+                            <Input 
+                              type="email" 
+                              placeholder="ejemplo@correo.com" 
+                              value={inviteEmail}
+                              onChange={e => setInviteEmail(e.target.value)}
+                              required
+                            />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Rol asignado</Label>
+                            <Select value={inviteRole} onValueChange={(v: any) => setInviteRole(v)}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="admin">Administrador (Control total)</SelectItem>
+                                <SelectItem value="employee">Empleado (Ventas e Inventario)</SelectItem>
+                                <SelectItem value="viewer">Observador (Solo lectura)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button type="submit" className="bg-indigo-600 text-white w-full">Enviar Invitación</Button>
+                        </DialogFooter>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader className="bg-slate-50">
+                      <TableRow>
+                        <TableHead>Miembro</TableHead>
+                        <TableHead>Rol</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {members.map(member => (
+                        <TableRow key={member.email}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
+                                {member.displayName[0].toUpperCase()}
+                              </div>
+                              <div>
+                                <p className="font-medium text-sm text-slate-900">{member.displayName}</p>
+                                <p className="text-xs text-slate-500">{member.email}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="capitalize">
+                              {member.role === "admin" ? "Administrador" : member.role === "employee" ? "Empleado" : "Observador"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-100">
+                              Activo
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {member.email !== user?.email && (
+                              <div className="flex justify-end gap-2">
+                                <Select 
+                                  value={member.role} 
+                                  onValueChange={(v: any) => handleUpdateMemberRole(member.email, v)}
+                                >
+                                  <SelectTrigger className="w-[110px] h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                    <SelectItem value="employee">Empleado</SelectItem>
+                                    <SelectItem value="viewer">Ver</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50"
+                                  onClick={() => handleRemoveMember(member.email)}
+                                >
+                                  <Trash2 size={16} />
+                                </Button>
+                              </div>
+                            )}
+                            {member.email === user?.email && (
+                              <span className="text-xs text-slate-400 italic font-normal">Tú</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
           {activeTab === "sales" && (
             <motion.div 
               key="sales"
@@ -2107,15 +2623,18 @@ export default function App() {
 }
 
 // Helper Components
-function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+function NavItem({ active, onClick, icon, label, primaryColor }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, primaryColor?: string }) {
   return (
     <button 
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
         active 
-          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" 
+          ? "text-white shadow-lg" 
           : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
       }`}
+      style={{ 
+        backgroundColor: active ? (primaryColor || "#4F46E5") : 'transparent',
+      }}
     >
       {icon}
       <span className="font-medium">{label}</span>

@@ -3,7 +3,7 @@ import { Product, SaleRecord, AIInsight } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-export async function getAIReplenishmentSuggestions(products: Product[], sales: SaleRecord[]): Promise<AIInsight[]> {
+export async function getAIReplenishmentSuggestions(products: Product[], sales: SaleRecord[], storeDescription?: string): Promise<AIInsight[]> {
   if (!process.env.GEMINI_API_KEY) {
     return [{
       type: 'replenishment',
@@ -16,6 +16,7 @@ export async function getAIReplenishmentSuggestions(products: Product[], sales: 
   const prompt = `
     Actúa como un experto en gestión de inventarios. Analiza los siguientes productos y su historial de ventas reciente para sugerir reposiciones.
     
+    Contexto del negocio: ${storeDescription || "Tienda general"}
     Productos: ${JSON.stringify(products.map(p => ({ id: p.id, name: p.name, brand: p.brand, code: p.code, stock: p.quantity, min: p.minStockLevel })))}
     Ventas recientes: ${JSON.stringify(sales)}
     
@@ -44,11 +45,13 @@ export async function getAIReplenishmentSuggestions(products: Product[], sales: 
   }
 }
 
-export async function getAIBusinessAnalysis(products: Product[], sales: SaleRecord[]): Promise<AIInsight[]> {
+export async function getAIBusinessAnalysis(products: Product[], sales: SaleRecord[], storeDescription?: string): Promise<AIInsight[]> {
   if (!process.env.GEMINI_API_KEY) return [];
 
   const prompt = `
     Analiza el rendimiento del negocio basado en el inventario y ventas.
+    
+    Contexto del negocio: ${storeDescription || "Tienda general"}
     Productos: ${JSON.stringify(products)}
     Ventas: ${JSON.stringify(sales)}
     
@@ -59,7 +62,7 @@ export async function getAIBusinessAnalysis(products: Product[], sales: SaleReco
     Cada insight debe tener:
     - type: "analysis" | "prediction"
     - title: título corto y llamativo
-    - description: análisis detallado, consejo de negocio o predicción de demanda
+    - description: análisis detallada, consejo de negocio o predicción de demanda
     - priority: "low", "medium" o "high"
   `;
 

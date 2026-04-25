@@ -1,5 +1,30 @@
+export type UserRole = 'admin' | 'employee' | 'viewer';
+
+export interface Store {
+  id: string;
+  name: string;
+  businessType?: string;
+  description?: string;
+  ownerId: string;
+  createdAt: string;
+  plan?: 'free' | 'pro';
+  branding?: {
+    primaryColor: string;
+    secondaryColor: string;
+    backgroundColor: string;
+  };
+}
+
+export interface StoreMember {
+  userId: string;
+  role: UserRole;
+  email: string;
+  displayName?: string;
+}
+
 export interface Product {
   id: string;
+  storeId: string;
   name: string;
   code: string;
   brand: string;
@@ -20,18 +45,21 @@ export interface SaleItem {
 
 export interface SaleRecord {
   id: string;
+  storeId: string;
   items: SaleItem[];
   totalAmount: number;
   date: string;
-  userId?: string;
+  userId: string;
 }
 
 export interface RestockRecord {
   id: string;
+  storeId: string;
   productId: string;
   productName?: string;
   quantity: number;
   date: string;
+  userId: string;
 }
 
 export interface InventoryStats {

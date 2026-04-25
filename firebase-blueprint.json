@@ -1,11 +1,46 @@
 {
   "entities": {
-    "Product": {
-      "title": "Product",
-      "description": "A product in the inventory",
+    "Store": {
+      "title": "Store",
+      "description": "A store tenant",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "name": { "type": "string" },
+        "businessType": { "type": "string" },
+        "description": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "branding": {
+          "type": "object",
+          "properties": {
+            "primaryColor": { "type": "string" },
+            "secondaryColor": { "type": "string" },
+            "backgroundColor": { "type": "string" }
+          }
+        }
+      },
+      "required": ["id", "name", "ownerId", "createdAt"]
+    },
+    "StoreMember": {
+      "title": "Store Member",
+      "description": "User association with a store and their role",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "employee", "viewer"] },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" }
+      },
+      "required": ["userId", "role", "email"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A product in the store's inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
         "code": { "type": "string" },
         "name": { "type": "string" },
         "brand": { "type": "string" },
@@ -15,16 +50,17 @@
         "minStockLevel": { "type": "number" },
         "lastUpdated": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "code", "name", "price", "quantity"]
+      "required": ["id", "storeId", "code", "name", "price", "quantity"]
     },
     "Sale": {
       "title": "Sale",
-      "description": "A sales transaction",
+      "description": "A sales transaction in a store",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "storeId": { "type": "string" },
         "date": { "type": "string", "format": "date-time" },
-        "total": { "type": "number" },
+        "totalAmount": { "type": "number" },
         "items": {
           "type": "array",
           "items": {
@@ -40,34 +76,44 @@
         },
         "userId": { "type": "string" }
       },
-      "required": ["id", "date", "total", "items", "userId"]
+      "required": ["id", "storeId", "date", "totalAmount", "items", "userId"]
     },
     "Restock": {
       "title": "Restock",
-      "description": "A product restock entry",
+      "description": "A product restock entry in a store",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "storeId": { "type": "string" },
         "productId": { "type": "string" },
         "productName": { "type": "string" },
         "quantity": { "type": "number" },
-        "date": { "type": "string", "format": "date-time" }
+        "date": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
       },
-      "required": ["id", "productId", "quantity", "date"]
+      "required": ["id", "storeId", "productId", "quantity", "date", "userId"]
     }
   },
   "firestore": {
-    "/users/{userId}/products/{productId}": {
+    "/stores/{storeId}": {
+      "schema": "Store",
+      "description": "Tenant store information"
+    },
+    "/stores/{storeId}/members/{userId}": {
+      "schema": "StoreMember",
+      "description": "Store users and their roles"
+    },
+    "/stores/{storeId}/products/{productId}": {
       "schema": "Product",
-      "description": "User-specific product catalog"
+      "description": "Store-specific product catalog"
     },
-    "/users/{userId}/sales/{saleId}": {
+    "/stores/{storeId}/sales/{saleId}": {
       "schema": "Sale",
-      "description": "User-specific sales transactions"
+      "description": "Store-specific sales transactions"
     },
-    "/users/{userId}/restocks/{restockId}": {
+    "/stores/{storeId}/restocks/{restockId}": {
       "schema": "Restock",
-      "description": "User-specific inventory restock history"
+      "description": "Store-specific inventory restock history"
     }
   }
 }

@@ -2,93 +2,72 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: products
-    // Document ID: productId
-    // Fields:
-    //   - id: string (required)
-    //   - code: string (required)
-    //   - name: string (required, size < 100)
-    //   - brand: string (optional)
-    //   - category: string (optional)
-    //   - price: number (required, > 0)
-    //   - quantity: number (required, >= 0)
-    //   - minStockLevel: number (required, >= 0)
-    //   - lastUpdated: timestamp
-    //
-    // Collection: sales
-    // Document ID: saleId
-    // Fields:
-    //   - id: string (required)
-    //   - date: timestamp (required)
-    //   - total: number (required, > 0)
-    //   - userId: string (required, matches auth.uid)
-    //   - items: list (required, size < 50)
-    //
-    // Collection: restocks
-    // Document ID: restockId
-    // Fields:
-    //   - id: string (required)
-    //   - productId: string (required)
-    //   - productName: string (required)
-    //   - quantity: number (required, > 0)
-    //   - date: timestamp (required)
-    //
-    // ===============================================================
+    // Global Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     // Helper Functions
-    function isAuthenticated() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function isStoreOwner(storeId) {
+      return isSignedIn() && get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid;
     }
 
-    function isAdmin() {
-      return isAuthenticated() && 
-        (request.auth.token.email == "brakcris129@gmail.com" && request.auth.token.email_verified == true);
+    function isStoreMember(storeId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid));
     }
 
-    function isValidProduct(data) {
-      return data.keys().hasAll(['id', 'code', 'name', 'price', 'quantity', 'minStockLevel']) &&
-             data.name is string && data.name.size() < 100 &&
-             data.price is number && data.price >= 0 &&
-             data.quantity is number && data.quantity >= 0 &&
-             data.minStockLevel is number && data.minStockLevel >= 0;
+    function getStoreRole(storeId) {
+      return get(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid)).data.role;
     }
 
-    function isValidSale(data) {
-      return data.keys().hasAll(['id', 'date', 'total', 'userId', 'items']) &&
-             data.total is number && data.total >= 0 &&
-             data.userId == request.auth.uid &&
-             data.items is list && data.items.size() < 50;
+    function hasAdminRole(storeId) {
+      return isStoreMember(storeId) && getStoreRole(storeId) == 'admin';
     }
 
-    function isValidRestock(data) {
-      return data.keys().hasAll(['id', 'productId', 'productName', 'quantity', 'date']) &&
-             data.quantity is number && data.quantity > 0;
+    function hasEmployeeRole(storeId) {
+      return isStoreMember(storeId) && (getStoreRole(storeId) == 'admin' || getStoreRole(storeId) == 'employee');
     }
 
-    // Rules
-    match /users/{userId} {
-      // Allow access if it's the authenticated owner OR if it's a local demo user
-      allow read, write: if isOwner(userId) || userId.matches("^local-.*");
-      
+    function hasViewerRole(storeId) {
+      return isStoreMember(storeId) || isStoreOwner(storeId);
+    }
+
+    // Rules for Stores
+    match /stores/{storeId} {
+      allow read: if isStoreMember(storeId) || isStoreOwner(storeId);
+      allow create: if isSignedIn(); 
+      allow update: if hasAdminRole(storeId) || isStoreOwner(storeId);
+      allow delete: if false;
+
+      match /members/{userId} {
+        allow read: if isStoreMember(storeId) || isStoreOwner(storeId);
+        allow write: if hasAdminRole(storeId) || isStoreOwner(storeId) || (isSignedIn() && request.auth.uid == userId);
+      }
+
       match /products/{productId} {
-        allow read, write: if isOwner(userId) || userId.matches("^local-.*");
+        allow read: if hasViewerRole(storeId);
+        allow write: if hasEmployeeRole(storeId);
       }
 
       match /sales/{saleId} {
-        allow read, write: if isOwner(userId) || userId.matches("^local-.*");
+        allow read: if hasViewerRole(storeId);
+        allow create: if hasEmployeeRole(storeId);
+        allow update, delete: if hasAdminRole(storeId);
       }
 
       match /restocks/{restockId} {
-        allow read, write: if isOwner(userId) || userId.matches("^local-.*");
+        allow read: if hasViewerRole(storeId);
+        allow write: if hasEmployeeRole(storeId);
       }
+    }
+
+    // Global user profiles
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
   }
 }
