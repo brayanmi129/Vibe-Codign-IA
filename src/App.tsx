@@ -114,6 +114,17 @@ import { Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord
 import { getAIReplenishmentSuggestions, getAIBusinessAnalysis } from "./lib/inventoryService";
 import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus, Settings, ChevronRight } from "lucide-react";
 import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
+import { CustomerForm } from "./components/CustomerForm";
+import { SaleConfirmationDialog } from "./components/SaleConfirmationDialog";
+import {
+  TAX_RATE,
+  generateInvoiceNumber,
+  calculateTotals,
+  downloadInvoicePdf,
+  sendInvoiceByEmail,
+  type InvoicePdfPayload,
+} from "./lib/invoiceService";
+import { Customer } from "./types";
 import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard";
 import Sketch from '@uiw/react-color-sketch';
 
@@ -333,6 +344,19 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [inventoryTab, setInventoryTab] = useState<"status" | "restock">("status");
   const [cart, setCart] = useState<SaleItem[]>([]);
+  const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false);
+  const [isProcessingSale, setIsProcessingSale] = useState(false);
+  const [saleConfirmation, setSaleConfirmation] = useState<{
+    open: boolean;
+    invoicePayload: InvoicePdfPayload | null;
+    emailSent: boolean;
+    emailMessage: string;
+  }>({
+    open: false,
+    invoicePayload: null,
+    emailSent: false,
+    emailMessage: "",
+  });
 
   // Auth State
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -978,44 +1002,139 @@ export default function App() {
     }
   };
 
-  const handleConfirmSale = async () => {
-    if (!user || !currentStore) return toast.error("Debes iniciar sesión para realizar ventas");
+  const handleStartCheckout = () => {
+    if (!user || !currentStore) {
+      toast.error("Debes iniciar sesión para realizar ventas");
+      return;
+    }
+    if (cart.length === 0) {
+      toast.error("El carrito está vacío");
+      return;
+    }
+    // Validar stock antes de abrir el formulario
+    for (const item of cart) {
+      const product = products.find((p) => p.id === item.productId);
+      if (!product || product.quantity < item.quantity) {
+        toast.error(`Stock insuficiente para ${item.productName}`);
+        return;
+      }
+    }
+    setIsCustomerFormOpen(true);
+  };
+
+  // ─── FASE 2: Procesar la venta con datos del cliente ────────────
+  const handleFinalizeSale = async (customer: Customer) => {
+    if (!user || !currentStore) return;
     if (cart.length === 0) return;
 
+    setIsProcessingSale(true);
     try {
       const totalAmount = cart.reduce((acc, item) => acc + item.totalPrice, 0);
+      const totals = calculateTotals(totalAmount);
       const saleId = `sale_${Date.now()}`;
-      
+      const invoiceNumber = generateInvoiceNumber(sales.length);
+
+      // Limpia los campos opcionales del cliente: si están vacíos, no los incluye
+      // (Firestore no acepta valores undefined)
+      const cleanCustomer: Customer = {
+        fullName: customer.fullName,
+        idNumber: customer.idNumber,
+        ...(customer.phone && { phone: customer.phone }),
+        ...(customer.address && { address: customer.address }),
+        ...(customer.email && { email: customer.email }),
+      };
+
       const newSale: SaleRecord = {
         id: saleId,
         storeId: currentStore.id,
-        branchId: activeBranchId ?? undefined,
         items: cart,
         totalAmount,
         date: new Date().toISOString(),
-        userId: user.uid
+        userId: user.uid,
+        // Datos de facturación
+        customer: cleanCustomer,
+        subtotal: totals.subtotal,
+        taxRate: TAX_RATE,
+        taxAmount: totals.taxAmount,
+        invoiceNumber,
+        emailSent: false,
       };
 
-      // 1. Create sale record
+      // Solo agrega branchId si existe (Firestore no acepta undefined)
+      if (activeBranchId) {
+        newSale.branchId = activeBranchId;
+      }
+      
+
+      // 1. Persistir venta en Firestore
       await setDoc(doc(db, "stores", currentStore.id, "sales", saleId), newSale);
 
-      // 2. Update product quantities
+      // 2. Actualizar stock de productos
       for (const item of cart) {
-        const product = products.find(p => p.id === item.productId);
+        const product = products.find((p) => p.id === item.productId);
         if (product) {
-          await updateDoc(doc(db, "stores", currentStore.id, "products", product.id), {
-            quantity: product.quantity - item.quantity,
-            lastUpdated: new Date().toISOString()
-          });
+          await updateDoc(
+            doc(db, "stores", currentStore.id, "products", product.id),
+            {
+              quantity: product.quantity - item.quantity,
+              lastUpdated: new Date().toISOString(),
+            }
+          );
         }
       }
 
+      // 3. Preparar payload para PDF
+      const invoicePayload: InvoicePdfPayload = {
+        sale: newSale,
+        store: currentStore,
+        customer,
+      };
+
+      // 4. Intentar envío por email (no bloqueante)
+      const emailResult = await sendInvoiceByEmail(invoicePayload);
+
+      // 5. Si el email se envió, actualizar la venta en BD
+      if (emailResult.success) {
+        await updateDoc(doc(db, "stores", currentStore.id, "sales", saleId), {
+          emailSent: true,
+        });
+      }
+
+      // 6. Cerrar form, limpiar carrito y abrir confirmación
+      setIsCustomerFormOpen(false);
       setCart([]);
-      toast.success("Venta confirmada con éxito");
-      setActiveTab("dashboard");
+      setSaleConfirmation({
+        open: true,
+        invoicePayload,
+        emailSent: emailResult.success,
+        emailMessage: emailResult.message,
+      });
+
+      toast.success("Venta registrada con éxito");
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `stores/${currentStore.id}/sales`);
+      toast.error("Error al procesar la venta");
+      handleFirestoreError(
+        error,
+        OperationType.WRITE,
+        `stores/${currentStore.id}/sales`
+      );
+    } finally {
+      setIsProcessingSale(false);
     }
+  };
+
+  // ─── FASE 3: Acciones del modal de confirmación ────────────────
+  const handleDownloadInvoice = () => {
+    if (saleConfirmation.invoicePayload) {
+      downloadInvoicePdf(saleConfirmation.invoicePayload);
+    }
+    setSaleConfirmation((prev) => ({ ...prev, open: false }));
+    setActiveTab("dashboard");
+  };
+
+  const handleCloseConfirmation = () => {
+    setSaleConfirmation((prev) => ({ ...prev, open: false }));
+    setActiveTab("dashboard");
   };
 
   const handleRestock = async (e: React.FormEvent) => {
@@ -2775,9 +2894,9 @@ export default function App() {
                         </div>
                         <Button 
                           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-12 text-lg font-bold"
-                          onClick={handleConfirmSale}
+                          onClick={handleStartCheckout}
                         >
-                          Confirmar Venta
+                          Continuar al Cliente →
                         </Button>
                       </div>
                     )}
@@ -2972,6 +3091,28 @@ export default function App() {
           )}
         </AnimatePresence>
         </div>
+        {/* ─── Modal: formulario de cliente (Fase 2) ─── */}
+        <CustomerForm
+          open={isCustomerFormOpen}
+          totalAmount={cart.reduce((acc, item) => acc + item.totalPrice, 0)}
+          isProcessing={isProcessingSale}
+          onCancel={() => setIsCustomerFormOpen(false)}
+          onSubmit={handleFinalizeSale}
+        />
+
+        {/* ─── Modal: confirmación de venta (Fase 4) ─── */}
+        {saleConfirmation.invoicePayload && (
+          <SaleConfirmationDialog
+            open={saleConfirmation.open}
+            invoiceNumber={saleConfirmation.invoicePayload.sale.invoiceNumber || ""}
+            customerName={saleConfirmation.invoicePayload.customer.fullName}
+            customerEmail={saleConfirmation.invoicePayload.customer.email}
+            emailSent={saleConfirmation.emailSent}
+            emailMessage={saleConfirmation.emailMessage}
+            onDownload={handleDownloadInvoice}
+            onClose={handleCloseConfirmation}
+          />
+        )}
       </main>
       </div>
     </div>
