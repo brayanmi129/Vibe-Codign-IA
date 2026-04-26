@@ -80,7 +80,6 @@ export function TeamPage({
                       <SelectContent className="w-full">
                         <SelectItem value="admin">Administrador (Control total)</SelectItem>
                         <SelectItem value="employee">Empleado (Ventas e Inventario)</SelectItem>
-                        <SelectItem value="viewer">Observador (Solo lectura)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -118,7 +117,7 @@ export function TeamPage({
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="capitalize">
-                      {member.role === "admin" ? "Administrador" : member.role === "employee" ? "Empleado" : "Observador"}
+                      {member.role === "admin" ? "Administrador" : "Empleado"}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -139,7 +138,6 @@ export function TeamPage({
                           <SelectContent>
                             <SelectItem value="admin">Admin</SelectItem>
                             <SelectItem value="employee">Empleado</SelectItem>
-                            <SelectItem value="viewer">Ver</SelectItem>
                           </SelectContent>
                         </Select>
                         <Button

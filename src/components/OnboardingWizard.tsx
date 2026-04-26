@@ -764,7 +764,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                         <SelectContent>
                           <SelectItem value="admin">Admin</SelectItem>
                           <SelectItem value="employee">Empleado</SelectItem>
-                          <SelectItem value="viewer">Ver</SelectItem>
                         </SelectContent>
                       </Select>
                       <Button

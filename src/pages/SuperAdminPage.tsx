@@ -82,8 +82,6 @@ function useTheme(dark: boolean) {
                      : 'bg-violet-100 text-violet-700 border-transparent',
       employee: dark ? 'bg-sky-900/50 text-sky-300 border-sky-800'
                      : 'bg-sky-100 text-sky-700 border-transparent',
-      viewer:   dark ? 'bg-slate-800 text-slate-400 border-slate-700'
-                     : 'bg-slate-100 text-slate-500 border-transparent',
     },
   };
 }
@@ -387,7 +385,7 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
                           store.members.map(member => {
                             const key = `${store.id}-${member.email}`;
                             const isRemoving = removingMemberId === key;
-                            const roleClass = t.roleBadge[member.role as keyof typeof t.roleBadge] || t.roleBadge.viewer;
+                            const roleClass = t.roleBadge[member.role as keyof typeof t.roleBadge] || t.roleBadge.employee;
                             return (
                               <div
                                 key={member.email}
