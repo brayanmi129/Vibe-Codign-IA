@@ -228,6 +228,17 @@ export interface SendEmailResult {
  * Si EmailJS no está configurado, retorna { success: false, message: '...' }
  * sin lanzar error.
  */
+/**
+ * Envía la factura por email al cliente usando EmailJS.
+ *
+ * NOTA: La versión gratuita de EmailJS NO permite adjuntos.
+ * Por eso el correo lleva los datos de la factura en el cuerpo,
+ * pero el PDF se descarga aparte desde el modal de confirmación.
+ *
+ * Si en el futuro quieres adjuntar el PDF, hay 2 opciones:
+ *   1) Plan pago de EmailJS (~$5/mes) → reactivar la línea de pdf_attachment
+ *   2) Migrar a Resend (gratis con adjuntos) → cambiar el servicio
+ */
 export const sendInvoiceByEmail = async (
   payload: InvoicePdfPayload
 ): Promise<SendEmailResult> => {
@@ -246,8 +257,14 @@ export const sendInvoiceByEmail = async (
 
   try {
     const totals = calculateTotals(sale.totalAmount);
-    const doc = generateInvoicePdf(payload);
-    const pdfBase64 = doc.output("datauristring"); // base64 del PDF
+
+    // Construye el detalle de productos como texto (para incluir en el cuerpo)
+    const itemsList = sale.items
+      .map(
+        (item) =>
+          `• ${item.productName} × ${item.quantity} = ${formatCurrency(item.totalPrice)}`
+      )
+      .join("\n");
 
     const templateParams = {
       to_email: customer.email,
@@ -258,7 +275,8 @@ export const sendInvoiceByEmail = async (
       subtotal: formatCurrency(totals.subtotal),
       tax: formatCurrency(totals.taxAmount),
       total: formatCurrency(totals.total),
-      pdf_attachment: pdfBase64,
+      items_list: itemsList,
+      // pdf_attachment: NO se incluye porque el plan free de EmailJS no soporta adjuntos
     };
 
     await emailjs.send(
@@ -268,7 +286,10 @@ export const sendInvoiceByEmail = async (
       { publicKey: EMAILJS_PUBLIC_KEY }
     );
 
-    return { success: true, message: `Factura enviada a ${customer.email}` };
+    return {
+      success: true,
+      message: `Resumen de factura enviado a ${customer.email}. El PDF debe descargarse aparte.`,
+    };
   } catch (error) {
     console.error("Error enviando email:", error);
     return {
