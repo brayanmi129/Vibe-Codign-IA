@@ -3,6 +3,53 @@ import { Product, SaleRecord, AIInsight } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
+// ─── AI Brand Color Suggestion ────────────────────────────────────
+
+export interface BrandColorSuggestion {
+  primaryColor: string;
+  secondaryColor: string;
+  backgroundColor: string;
+  textColor: string;
+  textSecondaryColor: string;
+}
+
+export async function suggestBrandColors(description: string, businessType: string): Promise<BrandColorSuggestion | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+
+  const prompt = `Eres un experto en branding y diseño UI para apps de negocios latinoamericanos.
+Sugiere una paleta de 5 colores para este negocio. Devuelve SOLO JSON con exactamente estos campos en hex:
+{
+  "primaryColor": "#xxxxxx",
+  "secondaryColor": "#xxxxxx",
+  "backgroundColor": "#xxxxxx",
+  "textColor": "#xxxxxx",
+  "textSecondaryColor": "#xxxxxx"
+}
+
+Tipo de negocio: ${businessType || "tienda general"}
+Descripción: ${description || "negocio de retail en Colombia"}
+
+Reglas estrictas:
+- primaryColor: color de marca vibrante y representativo del sector
+- secondaryColor: tono complementario o análogo al principal
+- backgroundColor: muy claro, ideal para fondo de app (mínimo #f0f0f0)
+- textColor: oscuro para máxima legibilidad como texto en sidebar (máximo #2a2a2a)
+- textSecondaryColor: gris suave para subtítulos (#555 - #888)`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: prompt,
+      config: { responseMimeType: "application/json", maxOutputTokens: 150 },
+    });
+    const result = JSON.parse(response.text || "{}");
+    if (result.primaryColor && result.secondaryColor && result.backgroundColor) return result as BrandColorSuggestion;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Chat Assistant ────────────────────────────────────────────────
 
 function prepareBusinessContext(products: Product[], sales: SaleRecord[], storeDescription?: string): string {

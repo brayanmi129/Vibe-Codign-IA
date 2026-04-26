@@ -501,6 +501,7 @@ export default function App() {
     try {
       const url = await uploadStoreLogo(currentStore.id, file);
       setTempSettings(prev => prev ? { ...prev, logoUrl: url } : prev);
+    setCurrentStore(prev => prev ? { ...prev, logoUrl: url } : prev);
     } catch { toast.error("Error al subir el logo"); }
     finally { setIsUploadingLogo(false); }
   };
@@ -879,30 +880,30 @@ export default function App() {
           {/* Logo + store name */}
           <div className="flex items-center gap-3 mb-6 px-2 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
             {currentStore?.logoUrl ? (
-              <img src={currentStore.logoUrl} alt="logo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 ring-2 ring-white/20" />
+              <img src={currentStore.logoUrl} alt="logo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 ring-2 ring-brand-text/20" />
             ) : (
-              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-                <Package className="text-white w-6 h-6" />
+              <div className="w-10 h-10 rounded-xl bg-brand-text/15 flex items-center justify-center flex-shrink-0">
+                <Package className="text-brand-text w-6 h-6" />
               </div>
             )}
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-white leading-none">{currentStore?.name || "StockMaster"}</h1>
-              <p className="text-[10px] uppercase tracking-widest font-semibold text-white/50 mt-0.5">PRO ENGINE</p>
+              <h1 className="text-lg font-bold tracking-tight text-brand-text leading-none">{currentStore?.name || "StockMaster"}</h1>
+              <p className="text-[10px] uppercase tracking-widest font-semibold text-brand-text-secondary mt-0.5">PRO ENGINE</p>
             </div>
           </div>
 
           {/* Store / branch selector */}
           <div className="mb-4 px-2 space-y-2">
-            <div className="flex items-center gap-2 px-3 py-2 bg-white/10 rounded-xl border border-white/10">
-              <StoreIcon size={15} className="text-white/70 shrink-0" />
+            <div className="flex items-center gap-2 px-3 py-2 bg-brand-text/10 rounded-xl border border-brand-text/10">
+              <StoreIcon size={15} className="text-brand-text-secondary shrink-0" />
               <div className="overflow-hidden">
-                <p className="text-xs font-semibold text-white truncate">{currentStore?.name}</p>
-                <p className="text-[10px] text-white/60 capitalize">{memberRole}</p>
+                <p className="text-xs font-semibold text-brand-text truncate">{currentStore?.name}</p>
+                <p className="text-[10px] text-brand-text-secondary capitalize">{memberRole}</p>
               </div>
             </div>
             {branches.length > 0 && (
               <Select value={activeBranchId ?? "all"} onValueChange={(v) => setActiveBranchId(v === "all" ? null : v)} disabled={!isAdmin}>
-                <SelectTrigger className="w-full h-9 bg-white/10 border-white/20 text-white text-xs">
+                <SelectTrigger className="w-full h-9 bg-brand-text/10 border-brand-text/20 text-brand-text text-xs">
                   <SelectValue placeholder="Sucursal" />
                 </SelectTrigger>
                 <SelectContent>
@@ -934,21 +935,21 @@ export default function App() {
           </nav>
 
           {/* User section */}
-          <div className="mt-auto pt-4 border-t border-white/15 space-y-1">
+          <div className="mt-auto pt-4 border-t border-brand-text/15 space-y-1">
             <div className="flex items-center gap-2.5 px-2 py-1.5">
-              <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 overflow-hidden flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-brand-text/10 border border-brand-text/15 overflow-hidden flex-shrink-0">
                 {user.photoURL
                   ? <img src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                  : <UserIcon className="w-full h-full p-1.5 text-white/60" />}
+                  : <UserIcon className="w-full h-full p-1.5 text-brand-text-secondary" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-white truncate">{user.displayName}</p>
-                <p className="text-[10px] text-white/55 truncate">{user.email}</p>
+                <p className="text-xs font-semibold text-brand-text truncate">{user.displayName}</p>
+                <p className="text-[10px] text-brand-text-secondary truncate">{user.email}</p>
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all text-sm font-medium"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-brand-text-secondary hover:text-brand-text hover:bg-brand-text/10 transition-all text-sm font-medium"
             >
               <LogOut size={15} /><span>Cerrar Sesión</span>
             </button>
