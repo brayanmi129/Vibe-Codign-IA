@@ -4,63 +4,133 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ShieldCheck, RefreshCw, Palette } from "lucide-react";
-import { Store } from "@/types";
+import { Separator } from "@/components/ui/separator";
+import { ShieldCheck, RefreshCw, Palette, Upload, ImageIcon, ChevronDown, ChevronUp, BrainCircuit, Building2 } from "lucide-react";
+import { TempStoreSettings } from "@/types";
 
 interface SettingsPageProps {
-  currentStore: Store;
-  setCurrentStore: React.Dispatch<React.SetStateAction<Store | null>>;
-  tempBranding: any;
-  setTempBranding: React.Dispatch<React.SetStateAction<any>>;
+  storeId: string;
+  tempSettings: TempStoreSettings;
+  setTempSettings: React.Dispatch<React.SetStateAction<TempStoreSettings>>;
+  isUploadingLogo: boolean;
+  onLogoFileSelect: (file: File) => void;
   isSavingSettings: boolean;
-  handleSaveSettings: (e: React.FormEvent) => void;
+  handleSaveSettings: () => void;
 }
 
-interface ColorFieldProps {
-  label: string;
-  color: string;
-  onChange: (hex: string) => void;
-}
-
-function ColorField({ label, color, onChange }: ColorFieldProps) {
+// ── Color swatch picker ───────────────────────────────────────────────────────
+function ColorField({ label, color, onChange }: { label: string; color: string; onChange: (hex: string) => void }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
-
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm font-semibold text-slate-700">{label}</p>
+    <div className="flex flex-col gap-2">
+      <p className="text-xs font-semibold text-slate-600">{label}</p>
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="w-full h-16 rounded-2xl border-4 border-white ring-1 ring-slate-200 shadow-md hover:ring-indigo-300 hover:scale-[1.02] transition-all cursor-pointer"
+        className="w-full h-12 rounded-xl border-4 border-white ring-1 ring-slate-200 shadow hover:ring-indigo-300 hover:scale-[1.03] transition-all cursor-pointer"
         style={{ backgroundColor: color }}
-        title="Clic para cambiar color"
       />
-      <input
-        ref={inputRef}
-        type="color"
-        value={color}
-        onChange={e => onChange(e.target.value)}
-        className="sr-only"
-      />
-      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-        <span className="font-mono text-xs text-slate-500 flex-1">{color.toUpperCase()}</span>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="text-[10px] text-indigo-500 hover:text-indigo-700 font-semibold"
-        >
-          Cambiar
-        </button>
+      <input ref={inputRef} type="color" value={color} onChange={e => onChange(e.target.value)} className="sr-only" />
+      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+        <span className="font-mono text-[10px] text-slate-500 flex-1">{color.toUpperCase()}</span>
+        <button type="button" onClick={() => inputRef.current?.click()} className="text-[10px] text-indigo-500 hover:text-indigo-700 font-semibold">·</button>
       </div>
     </div>
   );
 }
 
+// ── Logo upload zone ──────────────────────────────────────────────────────────
+function LogoUploadZone({
+  logoUrl, isUploading, onFileSelect,
+}: {
+  logoUrl: string; isUploading: boolean; onFileSelect: (file: File) => void;
+}) {
+  const [isDragging, setIsDragging] = React.useState(false);
+  const [localPreview, setLocalPreview] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFile = (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    setLocalPreview(URL.createObjectURL(file));
+    onFileSelect(file);
+  };
+
+  const displayed = localPreview || logoUrl;
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs font-semibold text-slate-600">Logo de la Tienda</Label>
+      <div
+        onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={e => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+        onClick={() => fileInputRef.current?.click()}
+        className={`relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed cursor-pointer transition-all h-36 ${
+          isDragging ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-slate-50 hover:border-indigo-300 hover:bg-indigo-50/50"
+        }`}
+      >
+        {isUploading ? (
+          <div className="flex flex-col items-center gap-2 text-slate-400">
+            <RefreshCw className="animate-spin w-6 h-6 text-indigo-500" />
+            <p className="text-xs">Subiendo logo...</p>
+          </div>
+        ) : displayed ? (
+          <>
+            <img src={displayed} alt="Logo" className="h-24 w-auto max-w-[80%] object-contain rounded-lg" />
+            <span className="text-[10px] text-slate-400 absolute bottom-2">Clic o arrastra para cambiar</span>
+          </>
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-slate-400">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+              <ImageIcon size={24} className="text-slate-300" />
+            </div>
+            <div className="text-center">
+              <p className="text-xs font-semibold text-slate-500">Arrastra tu logo aquí</p>
+              <p className="text-[10px] text-slate-400">o haz clic para seleccionar</p>
+            </div>
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+      </div>
+      {displayed && !isUploading && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          className="w-full text-xs text-slate-400 hover:text-indigo-600 gap-1.5"
+        >
+          <Upload size={12} /> Cambiar imagen
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPage({
-  currentStore, setCurrentStore, tempBranding, setTempBranding, isSavingSettings, handleSaveSettings,
+  storeId, tempSettings, setTempSettings,
+  isUploadingLogo, onLogoFileSelect, isSavingSettings, handleSaveSettings,
 }: SettingsPageProps) {
+  const [fiscalExpanded, setFiscalExpanded] = React.useState(false);
+
+  const set = (key: keyof TempStoreSettings, value: string) =>
+    setTempSettings(prev => ({ ...prev, [key]: value }));
+
+  const setBranding = (key: keyof TempStoreSettings["branding"], value: string) =>
+    setTempSettings(prev => ({ ...prev, branding: { ...prev.branding, [key]: value } }));
+
+  const { branding } = tempSettings;
+  const preview = branding;
+
   return (
     <motion.div
       key="settings"
@@ -70,154 +140,220 @@ export function SettingsPage({
       className="space-y-8"
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
         {/* Left column */}
         <div className="lg:col-span-1 space-y-6">
           <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
             <CardHeader className="bg-slate-50 border-b border-slate-100">
-              <CardTitle className="text-lg">Información General</CardTitle>
-              <CardDescription>Detalles básicos de tu tienda.</CardDescription>
+              <CardTitle className="text-base">Información de Tienda</CardTitle>
             </CardHeader>
-            <CardContent className="p-6 space-y-4">
-              <div className="space-y-2">
-                <Label>Nombre de la Tienda</Label>
-                <Input
-                  value={currentStore?.name}
-                  onChange={e => setCurrentStore(prev => prev ? ({ ...prev, name: e.target.value }) : null)}
-                />
+            <CardContent className="p-5 space-y-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">ID del Tenant</p>
+                <p className="font-mono text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 truncate">{storeId}</p>
               </div>
-              <div className="space-y-2">
-                <Label>Tipo de Negocio</Label>
-                <Select
-                  value={currentStore?.businessType}
-                  onValueChange={val => setCurrentStore(prev => prev ? ({ ...prev, businessType: val }) : null)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="tech">Tecnología</SelectItem>
-                    <SelectItem value="fashion">Moda</SelectItem>
-                    <SelectItem value="food">Alimentos</SelectItem>
-                    <SelectItem value="health">Salud</SelectItem>
-                    <SelectItem value="other">Otro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>ID de Tienda</Label>
-                <Input value={currentStore?.id} disabled className="bg-slate-50 font-mono text-xs" />
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Tipo de negocio</p>
+                <p className="text-sm text-slate-700 capitalize">{tempSettings.businessType || "—"}</p>
               </div>
             </CardContent>
           </Card>
 
           <Card className="bg-indigo-600 text-white border-none shadow-lg shadow-indigo-100">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShieldCheck size={20} />
-                Acceso de Administrador
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ShieldCheck size={18} />
+                Acceso Administrador
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-indigo-100">
-                Como administrador, tienes control total sobre la configuración visual y los miembros del equipo.
+              <p className="text-sm text-indigo-100 leading-relaxed">
+                Tienes control total sobre la identidad visual, la configuración del asistente IA y los datos fiscales de esta tienda.
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Right column — branding */}
+        {/* Right column */}
         <div className="lg:col-span-2">
-          <Card className="bg-white border-slate-200 shadow-sm overflow-hidden h-full flex flex-col">
-            <CardHeader className="bg-slate-50 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="bg-indigo-100 p-1.5 rounded-lg">
-                  <Palette className="w-4 h-4 text-indigo-600" />
+          <Card className="bg-white border-slate-200 shadow-sm overflow-hidden flex flex-col">
+            <CardContent className="p-6 space-y-8 flex-1">
+
+              {/* ── 1. Identidad visual ───────────────────────────────── */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="bg-indigo-50 p-1.5 rounded-lg"><Palette className="w-4 h-4 text-indigo-600" /></div>
+                  <h4 className="font-semibold text-slate-800">Identidad Visual</h4>
                 </div>
-                <div>
-                  <CardTitle className="text-lg">Personalización de Marca</CardTitle>
-                  <CardDescription>Define los colores que identifican tu negocio.</CardDescription>
+
+                <LogoUploadZone
+                  logoUrl={tempSettings.logoUrl}
+                  isUploading={isUploadingLogo}
+                  onFileSelect={onLogoFileSelect}
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-600">Nombre de la Tienda</Label>
+                    <Input
+                      value={tempSettings.name}
+                      onChange={e => set("name", e.target.value)}
+                      placeholder="Mi Tienda"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-600">Tipo de Negocio</Label>
+                    <Select value={tempSettings.businessType} onValueChange={v => set("businessType", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tech">Tecnología</SelectItem>
+                        <SelectItem value="fashion">Moda</SelectItem>
+                        <SelectItem value="food">Alimentos</SelectItem>
+                        <SelectItem value="health">Salud</SelectItem>
+                        <SelectItem value="other">Otro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
-            </CardHeader>
 
-            <CardContent className="p-6 flex-1 space-y-8">
-              {/* Color pickers — 3 columns */}
-              <div className="grid grid-cols-3 gap-4">
-                <ColorField
-                  label="Color Principal"
-                  color={tempBranding?.primaryColor || "#4F46E5"}
-                  onChange={hex => setTempBranding((prev: any) => ({ ...prev, primaryColor: hex }))}
-                />
-                <ColorField
-                  label="Color Secundario"
-                  color={tempBranding?.secondaryColor || "#818CF8"}
-                  onChange={hex => setTempBranding((prev: any) => ({ ...prev, secondaryColor: hex }))}
-                />
-                <ColorField
-                  label="Color de Fondo"
-                  color={tempBranding?.backgroundColor || "#F8FAFC"}
-                  onChange={hex => setTempBranding((prev: any) => ({ ...prev, backgroundColor: hex }))}
-                />
-              </div>
+              <Separator />
 
-              {/* Live preview */}
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-slate-700">Vista Previa</p>
-                <div
-                  className="w-full rounded-2xl border border-slate-200 shadow-inner p-5 flex flex-col gap-4 transition-all duration-300"
-                  style={{ backgroundColor: tempBranding?.backgroundColor }}
-                >
-                  {/* Mock navbar */}
-                  <div className="flex items-center justify-between bg-white shadow-sm px-4 py-2.5 rounded-xl">
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg" style={{ backgroundColor: tempBranding?.primaryColor }} />
-                      <div className="space-y-1">
-                        <div className="w-20 h-2 rounded-full bg-slate-100" />
-                        <div className="w-12 h-1.5 rounded-full bg-slate-50" />
+              {/* ── 2. Colores ────────────────────────────────────────── */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="bg-indigo-50 p-1.5 rounded-lg"><Palette className="w-4 h-4 text-indigo-600" /></div>
+                  <h4 className="font-semibold text-slate-800">Colores de Marca</h4>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* 5 color swatches */}
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Interfaz</p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <ColorField label="Principal" color={branding.primaryColor} onChange={v => setBranding("primaryColor", v)} />
+                        <ColorField label="Secundario" color={branding.secondaryColor} onChange={v => setBranding("secondaryColor", v)} />
+                        <ColorField label="Fondo" color={branding.backgroundColor} onChange={v => setBranding("backgroundColor", v)} />
                       </div>
                     </div>
-                    <div className="w-8 h-8 rounded-full bg-slate-100" />
-                  </div>
-
-                  {/* Mock cards row */}
-                  <div className="grid grid-cols-3 gap-3">
-                    {[tempBranding?.primaryColor, tempBranding?.secondaryColor, tempBranding?.primaryColor].map((c, i) => (
-                      <div key={i} className="bg-white rounded-xl p-3 shadow-sm flex flex-col gap-2 border border-slate-50">
-                        <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: `${c}25` }}>
-                          <div className="w-4 h-4 rounded-md m-2" style={{ backgroundColor: c }} />
-                        </div>
-                        <div className="w-full h-1.5 rounded-full bg-slate-50" />
-                        <div className="w-2/3 h-3 rounded-full" style={{ backgroundColor: c }} />
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Tipografía y sidebar</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <ColorField label="Color de texto" color={branding.textColor} onChange={v => setBranding("textColor", v)} />
+                        <ColorField label="Fondo sidebar" color={branding.sidebarColor} onChange={v => setBranding("sidebarColor", v)} />
                       </div>
-                    ))}
+                    </div>
                   </div>
 
-                  {/* Mock button */}
+                  {/* Live preview */}
                   <div
-                    className="w-full rounded-xl h-9 flex items-center justify-center font-bold text-xs text-white shadow"
-                    style={{ backgroundColor: tempBranding?.primaryColor }}
+                    className="rounded-2xl border border-slate-200 p-4 flex flex-col gap-3 transition-all duration-300"
+                    style={{ backgroundColor: preview.backgroundColor }}
                   >
-                    Botón de Ejemplo
+                    {/* Mock sidebar strip */}
+                    <div className="flex gap-2">
+                      <div className="w-8 rounded-xl flex flex-col items-center py-2 gap-2" style={{ backgroundColor: preview.sidebarColor, border: '1px solid #e2e8f0' }}>
+                        <div className="w-4 h-4 rounded-md" style={{ backgroundColor: preview.primaryColor }} />
+                        {[1,2,3].map(i => (
+                          <div key={i} className="w-4 h-1.5 rounded-full" style={{ backgroundColor: preview.textColor + '40' }} />
+                        ))}
+                      </div>
+                      <div className="flex-1 flex flex-col gap-2">
+                        <p className="text-[9px] font-bold" style={{ color: preview.textColor }}>Resumen de Negocio</p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[preview.primaryColor, preview.secondaryColor].map((c, i) => (
+                            <div key={i} className="bg-white rounded-lg p-2 shadow-sm flex flex-col gap-1">
+                              <div className="w-4 h-4 rounded-md" style={{ backgroundColor: c + '30' }}>
+                                <div className="w-2 h-2 m-1 rounded-sm" style={{ backgroundColor: c }} />
+                              </div>
+                              <div className="w-full h-1 rounded-full" style={{ backgroundColor: preview.textColor + '20' }} />
+                              <div className="w-2/3 h-2 rounded-full" style={{ backgroundColor: c }} />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="rounded-lg h-6 flex items-center justify-center text-white text-[9px] font-bold shadow" style={{ backgroundColor: preview.primaryColor }}>
+                          Guardar cambios
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 leading-relaxed">
-                Tip: Los colores se aplican automáticamente a botones, iconos activos y fondos en toda la interfaz.
-              </p>
+              <Separator />
+
+              {/* ── 3. Asistente IA ───────────────────────────────────── */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="bg-indigo-50 p-1.5 rounded-lg"><BrainCircuit className="w-4 h-4 text-indigo-600" /></div>
+                  <div>
+                    <h4 className="font-semibold text-slate-800">Asistente IA</h4>
+                    <p className="text-xs text-slate-400">Esta descripción personaliza las respuestas del asistente.</p>
+                  </div>
+                </div>
+                <Textarea
+                  value={tempSettings.description}
+                  onChange={e => set("description", e.target.value)}
+                  placeholder="Ej: Somos una tienda de electrónica en Bogotá, Colombia. Vendemos celulares, accesorios y garantías. Nuestros clientes principales son jóvenes entre 18-35 años..."
+                  className="resize-none min-h-[100px] text-sm bg-slate-50"
+                  rows={4}
+                />
+              </div>
+
+              <Separator />
+
+              {/* ── 4. Información fiscal (colapsable) ───────────────── */}
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => setFiscalExpanded(v => !v)}
+                  className="w-full flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="bg-slate-100 p-1.5 rounded-lg group-hover:bg-indigo-50 transition-colors">
+                      <Building2 className="w-4 h-4 text-slate-500 group-hover:text-indigo-600 transition-colors" />
+                    </div>
+                    <div className="text-left">
+                      <h4 className="font-semibold text-slate-800">Información Fiscal</h4>
+                      <p className="text-xs text-slate-400">Datos para facturas y documentos legales.</p>
+                    </div>
+                  </div>
+                  {fiscalExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                </button>
+
+                {fiscalExpanded && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-600">Razón Social</Label>
+                      <Input value={tempSettings.legalName} onChange={e => set("legalName", e.target.value)} placeholder="Empresa S.A.S." />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-600">NIT / RUT</Label>
+                      <Input value={tempSettings.nit} onChange={e => set("nit", e.target.value)} placeholder="900.123.456-7" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-600">Dirección Fiscal</Label>
+                      <Input value={tempSettings.fiscalAddress} onChange={e => set("fiscalAddress", e.target.value)} placeholder="Cra 1 #23-45, Bogotá" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-600">Teléfono Fiscal</Label>
+                      <Input value={tempSettings.fiscalPhone} onChange={e => set("fiscalPhone", e.target.value)} placeholder="+57 300 000 0000" />
+                    </div>
+                  </div>
+                )}
+              </div>
             </CardContent>
 
-            <CardFooter className="bg-slate-50 border-t border-slate-100 p-5 flex justify-end">
+            <CardFooter className="bg-slate-50 border-t border-slate-100 p-5 flex items-center justify-between">
+              <p className="text-xs text-slate-400">Los cambios se aplican globalmente a toda la tienda.</p>
               <Button
                 onClick={handleSaveSettings}
-                disabled={isSavingSettings}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[180px] h-11 shadow-md shadow-indigo-100 rounded-xl"
+                disabled={isSavingSettings || isUploadingLogo}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[160px] h-10 shadow-md shadow-indigo-100 rounded-xl"
               >
                 {isSavingSettings ? (
-                  <div className="flex items-center gap-2">
-                    <RefreshCw className="animate-spin w-4 h-4" />
-                    Guardando...
-                  </div>
+                  <span className="flex items-center gap-2"><RefreshCw className="animate-spin w-4 h-4" />Guardando...</span>
                 ) : "Guardar Cambios"}
               </Button>
             </CardFooter>

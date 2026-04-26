@@ -26,10 +26,9 @@ import {
   handleFirestoreError, OperationType, User,
 } from "./lib/firebase";
 import {
-  Product, SaleItem, SaleRecord, InventoryStats, AIInsight, RestockRecord,
-  Store, UserRole, StoreMember, Branch,
+  Product, SaleItem, SaleRecord, InventoryStats, RestockRecord,
+  Store, UserRole, StoreMember, Branch, TempStoreSettings,
 } from "./types";
-import { getAIReplenishmentSuggestions, getAIBusinessAnalysis } from "./lib/inventoryService";
 import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus, Settings, ChevronRight } from "lucide-react";
 import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
 import { CustomerForm } from "./components/CustomerForm";
@@ -38,7 +37,7 @@ import {
   TAX_RATE, generateInvoiceNumber, generateInvoicePdf, calculateTotals,
   downloadInvoicePdf, sendInvoiceByEmail, type InvoicePdfPayload,
 } from "./lib/invoiceService";
-import { uploadInvoicePdf } from "./lib/supabase";
+import { uploadInvoicePdf, uploadStoreLogo } from "./lib/supabase";
 import { Customer } from "./types";
 import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard";
 import { NavItem } from "./components/NavItem";
@@ -63,7 +62,8 @@ export default function App() {
   const [memberRole, setMemberRole] = useState<UserRole | null>(null);
   const [isStoreLoading, setIsStoreLoading] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [tempBranding, setTempBranding] = useState<any>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [tempSettings, setTempSettings] = useState<TempStoreSettings | null>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<SaleRecord[]>([]);
@@ -75,8 +75,6 @@ export default function App() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [aiInsights, setAiInsights] = useState<AIInsight[]>([]);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [inventoryTab, setInventoryTab] = useState<"status" | "restock">("status");
   const [cart, setCart] = useState<SaleItem[]>([]);
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false);
@@ -235,16 +233,17 @@ export default function App() {
 
   // ─── Effects ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (currentStore?.branding) {
-      const root = document.documentElement;
-      root.style.setProperty('--brand-primary', currentStore.branding.primaryColor);
-      root.style.setProperty('--brand-secondary', currentStore.branding.secondaryColor);
-      root.style.setProperty('--brand-bg', currentStore.branding.backgroundColor);
+    const root = document.documentElement;
+    const b = currentStore?.branding;
+    if (b) {
+      root.style.setProperty('--brand-primary', b.primaryColor);
+      root.style.setProperty('--brand-secondary', b.secondaryColor);
+      root.style.setProperty('--brand-bg', b.backgroundColor);
+      root.style.setProperty('--brand-text', b.textColor || '#0f172a');
+      root.style.setProperty('--brand-sidebar', b.sidebarColor || '#ffffff');
     } else {
-      const root = document.documentElement;
-      root.style.removeProperty('--brand-primary');
-      root.style.removeProperty('--brand-secondary');
-      root.style.removeProperty('--brand-bg');
+      ['--brand-primary','--brand-secondary','--brand-bg','--brand-text','--brand-sidebar']
+        .forEach(v => root.style.removeProperty(v));
     }
   }, [currentStore]);
 
@@ -330,6 +329,25 @@ export default function App() {
     return () => unsubscribe();
   }, [currentStore]);
 
+  // ─── Helpers ──────────────────────────────────────────────────────
+  const buildTempSettings = (store: Store): TempStoreSettings => ({
+    name: store.name || '',
+    businessType: store.businessType || '',
+    description: store.description || '',
+    logoUrl: store.logoUrl || '',
+    legalName: store.legalName || '',
+    nit: store.nit || '',
+    fiscalAddress: store.fiscalAddress || '',
+    fiscalPhone: store.fiscalPhone || '',
+    branding: {
+      primaryColor: store.branding?.primaryColor || '#4f46e5',
+      secondaryColor: store.branding?.secondaryColor || '#4338ca',
+      backgroundColor: store.branding?.backgroundColor || '#f8fafc',
+      textColor: store.branding?.textColor || '#0f172a',
+      sidebarColor: store.branding?.sidebarColor || '#ffffff',
+    },
+  });
+
   // ─── Handlers ─────────────────────────────────────────────────────
   const handleSelectStore = async (store: Store) => {
     setIsStoreLoading(true);
@@ -340,7 +358,7 @@ export default function App() {
       if (memberDoc.exists()) {
         setMemberRole(memberDoc.data().role as UserRole);
         setCurrentStore(store);
-        setTempBranding(store.branding || { primaryColor: '#4f46e5', secondaryColor: '#4338ca', backgroundColor: '#f8fafc' });
+        setTempSettings(buildTempSettings(store));
         localStorage.setItem("lastStoreId", store.id);
         toast.success(`Entrando a ${store.name}`);
       } else {
@@ -379,7 +397,7 @@ export default function App() {
       if (!activeUser) throw new Error("Error de autenticación");
 
       const storeId = `store_${Math.random().toString(36).substr(2, 9)}`;
-      const newStore: Store = { id: storeId, name: onboardingData.storeName, businessType: onboardingData.businessType, description: onboardingData.aiDescription, ownerId: activeUser.uid, createdAt: new Date().toISOString(), branding: onboardingData.branding };
+      const newStore: Store = { id: storeId, name: onboardingData.storeName, businessType: onboardingData.businessType, description: onboardingData.aiDescription, ownerId: activeUser.uid, createdAt: new Date().toISOString(), branding: { ...onboardingData.branding, textColor: '#0f172a', sidebarColor: '#ffffff' } };
       await setDoc(doc(db, "stores", storeId), newStore);
       await setDoc(doc(db, "stores", storeId, "members", activeUser.uid), { userId: activeUser.uid, storeId, role: "admin", email: activeUser.email!, displayName: activeUser.displayName || activeUser.email?.split("@")[0] });
       for (const emp of onboardingData.employees) {
@@ -455,16 +473,36 @@ export default function App() {
     } catch { toast.error("Error al cerrar sesión"); }
   };
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentStore || !tempBranding) return;
+  const handleSaveSettings = async () => {
+    if (!currentStore || !tempSettings) return;
     setIsSavingSettings(true);
     try {
-      await updateDoc(doc(db, "stores", currentStore.id), { branding: tempBranding });
-      setCurrentStore(prev => prev ? ({ ...prev, branding: tempBranding }) : null);
-      toast.success("Ajustes guardados correctamente ✨");
+      const update = {
+        name: tempSettings.name,
+        businessType: tempSettings.businessType,
+        description: tempSettings.description,
+        logoUrl: tempSettings.logoUrl,
+        legalName: tempSettings.legalName,
+        nit: tempSettings.nit,
+        fiscalAddress: tempSettings.fiscalAddress,
+        fiscalPhone: tempSettings.fiscalPhone,
+        branding: tempSettings.branding,
+      };
+      await updateDoc(doc(db, "stores", currentStore.id), update);
+      setCurrentStore(prev => prev ? ({ ...prev, ...update }) : null);
+      toast.success("Ajustes guardados correctamente");
     } catch { toast.error("Error al guardar los ajustes"); }
     finally { setIsSavingSettings(false); }
+  };
+
+  const handleLogoFileSelect = async (file: File) => {
+    if (!currentStore) return;
+    setIsUploadingLogo(true);
+    try {
+      const url = await uploadStoreLogo(currentStore.id, file);
+      setTempSettings(prev => prev ? { ...prev, logoUrl: url } : prev);
+    } catch { toast.error("Error al subir el logo"); }
+    finally { setIsUploadingLogo(false); }
   };
 
   const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -757,16 +795,20 @@ export default function App() {
   const primaryColor = currentStore?.branding?.primaryColor;
 
   return (
-    <div className="min-h-screen bg-slate-100 flex justify-center overflow-x-hidden">
+    <div className="h-screen overflow-hidden bg-slate-100 flex justify-center">
       <Toaster position="top-right" />
-      <div className="w-full max-w-[1600px] bg-white flex flex-col md:flex-row shadow-2xl shadow-slate-200/50 min-h-screen relative">
+      <div className="w-full max-w-[1600px] bg-white flex flex-col md:flex-row shadow-2xl shadow-slate-200/50 h-full relative">
 
         {/* Mobile Header */}
-        <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
+        <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between flex-shrink-0 z-50">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg" style={{ backgroundColor: primaryColor || "#4F46E5" }}>
-              <Package className="text-white w-5 h-5" />
-            </div>
+            {currentStore?.logoUrl ? (
+              <img src={currentStore.logoUrl} alt="logo" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+            ) : (
+              <div className="p-1.5 rounded-lg" style={{ backgroundColor: primaryColor || "#4F46E5" }}>
+                <Package className="text-white w-5 h-5" />
+              </div>
+            )}
             <h1 className="text-lg font-bold tracking-tight">{currentStore?.name || "StockMaster"}</h1>
           </div>
           <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
@@ -789,9 +831,13 @@ export default function App() {
                 className="fixed left-0 top-0 h-full w-72 bg-white z-50 p-6 md:hidden shadow-2xl"
               >
                 <div className="flex items-center gap-2 mb-10">
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: primaryColor || "#4F46E5" }}>
-                    <Package className="text-white w-6 h-6" />
-                  </div>
+                  {currentStore?.logoUrl ? (
+                    <img src={currentStore.logoUrl} alt="logo" className="w-9 h-9 rounded-xl object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="p-2 rounded-lg" style={{ backgroundColor: primaryColor || "#4F46E5" }}>
+                      <Package className="text-white w-6 h-6" />
+                    </div>
+                  )}
                   <h1 className="text-xl font-bold tracking-tight">{currentStore?.name || "StockMaster"}</h1>
                 </div>
                 <nav className="space-y-2">
@@ -826,13 +872,17 @@ export default function App() {
         </AnimatePresence>
 
         {/* Sidebar Desktop */}
-        <div className="sticky left-0 top-0 h-screen w-72 bg-white border-r border-slate-100 p-5 hidden md:flex flex-col shadow-sm z-30 overflow-y-auto">
+        <div className="w-72 h-full bg-brand-sidebar border-r border-slate-100 p-5 hidden md:flex flex-col shadow-sm z-30 overflow-y-auto flex-shrink-0">
           <div className="flex items-center gap-3 mb-5 px-2 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
-            <div className="p-2.5 rounded-xl shadow-lg transition-transform hover:scale-105" style={{ backgroundColor: primaryColor || "#4F46E5" }}>
-              <Package className="text-white w-6 h-6" />
-            </div>
+            {currentStore?.logoUrl ? (
+              <img src={currentStore.logoUrl} alt="logo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 shadow-md" />
+            ) : (
+              <div className="p-2.5 rounded-xl shadow-lg transition-transform hover:scale-105" style={{ backgroundColor: primaryColor || "#4F46E5" }}>
+                <Package className="text-white w-6 h-6" />
+              </div>
+            )}
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-none">{currentStore?.name || "StockMaster"}</h1>
+              <h1 className="text-xl font-bold tracking-tight text-brand-text leading-none">{currentStore?.name || "StockMaster"}</h1>
               <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mt-1">PRO ENGINE</p>
             </div>
           </div>
@@ -867,7 +917,7 @@ export default function App() {
             {isAdmin && (
               <NavItem
                 active={activeTab === "settings"}
-                onClick={() => { setActiveTab("settings"); setTempBranding(currentStore?.branding || { primaryColor: '#4f46e5', secondaryColor: '#4338ca', backgroundColor: '#f8fafc' }); }}
+                onClick={() => { setActiveTab("settings"); if (currentStore) setTempSettings(buildTempSettings(currentStore)); }}
                 icon={<Settings size={20} />}
                 label="Ajustes"
                 primaryColor={primaryColor}
@@ -892,7 +942,7 @@ export default function App() {
         </div>
 
         {/* Main Content */}
-        <main className="flex-1 min-h-screen transition-colors duration-500 bg-brand-bg">
+        <main className="flex-1 overflow-y-auto transition-colors duration-500 bg-brand-bg">
           <div className="max-w-7xl mx-auto p-6 md:p-10 lg:p-12">
             <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
               <div>
@@ -933,20 +983,7 @@ export default function App() {
                   analytics={analytics}
                   stats={stats}
                   salesHistoryData={salesHistoryData}
-                  aiInsights={aiInsights}
-                  isAnalyzing={isAnalyzing}
-                  runAIAnalysis={async () => {
-                    setIsAnalyzing(true);
-                    try {
-                      const [replenishment, analysis] = await Promise.all([
-                        getAIReplenishmentSuggestions(products, sales, currentStore?.description),
-                        getAIBusinessAnalysis(products, sales, currentStore?.description),
-                      ]);
-                      setAiInsights([...replenishment, ...analysis]);
-                      toast.success("Análisis de IA completado");
-                    } catch { toast.error("Error al ejecutar el análisis de IA"); }
-                    finally { setIsAnalyzing(false); }
-                  }}
+                  onOpenAI={() => setActiveTab("ai")}
                 />
               )}
               {activeTab === "products" && (
@@ -1033,12 +1070,13 @@ export default function App() {
                   handleStartCheckout={handleStartCheckout}
                 />
               )}
-              {activeTab === "settings" && isAdmin && (
+              {activeTab === "settings" && isAdmin && tempSettings && (
                 <SettingsPage
-                  currentStore={currentStore}
-                  setCurrentStore={setCurrentStore}
-                  tempBranding={tempBranding}
-                  setTempBranding={setTempBranding}
+                  storeId={currentStore.id}
+                  tempSettings={tempSettings}
+                  setTempSettings={setTempSettings as React.Dispatch<React.SetStateAction<TempStoreSettings>>}
+                  isUploadingLogo={isUploadingLogo}
+                  onLogoFileSelect={handleLogoFileSelect}
                   isSavingSettings={isSavingSettings}
                   handleSaveSettings={handleSaveSettings}
                 />

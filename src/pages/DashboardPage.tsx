@@ -5,13 +5,13 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { BrainCircuit, AlertTriangle, TrendingUp, DollarSign, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { BrainCircuit, AlertTriangle, TrendingUp, DollarSign, ArrowUpRight, ArrowDownRight, Sparkles } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip,
 } from "recharts";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency } from "@/lib/formatters";
-import { InventoryStats, AIInsight } from "@/types";
+import { InventoryStats } from "@/types";
 
 interface Analytics {
   todayRevenue: number;
@@ -26,12 +26,10 @@ interface DashboardPageProps {
   analytics: Analytics;
   stats: InventoryStats;
   salesHistoryData: { date: string; sales: number }[];
-  aiInsights: AIInsight[];
-  isAnalyzing: boolean;
-  runAIAnalysis: () => void;
+  onOpenAI: () => void;
 }
 
-export function DashboardPage({ analytics, stats, salesHistoryData, aiInsights, isAnalyzing, runAIAnalysis }: DashboardPageProps) {
+export function DashboardPage({ analytics, stats, salesHistoryData, onOpenAI }: DashboardPageProps) {
   return (
     <motion.div
       key="dashboard"
@@ -72,43 +70,45 @@ export function DashboardPage({ analytics, stats, salesHistoryData, aiInsights, 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* AI chat CTA */}
         <Card className="lg:col-span-2 bg-indigo-600 text-white border-none shadow-indigo-200 shadow-lg overflow-hidden relative">
-          <div className="absolute top-0 right-0 p-8 opacity-10">
+          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
             <BrainCircuit size={120} />
           </div>
           <CardHeader>
-            <div className="flex items-center gap-2 mb-2">
-              <BrainCircuit size={20} />
-              <span className="text-xs font-bold uppercase tracking-wider opacity-80">AI Insights</span>
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles size={16} className="opacity-80" />
+              <span className="text-xs font-bold uppercase tracking-wider opacity-80">Asistente IA</span>
             </div>
-            <CardTitle className="text-2xl font-bold">Análisis Inteligente</CardTitle>
+            <CardTitle className="text-2xl font-bold">¿Cómo está tu negocio hoy?</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {aiInsights.length > 0 ? (
-                aiInsights.slice(0, 2).map((insight, idx) => (
-                  <div key={idx} className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10">
-                    <h4 className="font-bold text-lg mb-1">{insight.title}</h4>
-                    <p className="text-indigo-100 text-sm">{insight.description}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center py-6 text-center">
-                  <p className="text-indigo-100 mb-4">Genera insights personalizados para tu negocio.</p>
-                  <Button
-                    variant="secondary"
-                    className="bg-white text-indigo-600 hover:bg-indigo-50"
-                    onClick={runAIAnalysis}
-                    disabled={isAnalyzing}
-                  >
-                    {isAnalyzing ? "Analizando..." : "Generar Insights"}
-                  </Button>
-                </div>
-              )}
+          <CardContent className="space-y-4">
+            <p className="text-indigo-100 text-sm leading-relaxed">
+              Tu asistente tiene acceso en tiempo real a tu inventario, ventas y métricas. Pregúntale sobre stock crítico, tendencias o estrategias para aumentar tus ingresos.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {["¿Qué productos reponer?", "Analiza mis ventas", "Estrategia para esta semana"].map(hint => (
+                <button
+                  key={hint}
+                  onClick={onOpenAI}
+                  className="text-xs bg-white/15 hover:bg-white/25 text-white border border-white/20 rounded-full px-3 py-1.5 transition-colors"
+                >
+                  {hint}
+                </button>
+              ))}
             </div>
+            <Button
+              variant="secondary"
+              className="bg-white text-indigo-600 hover:bg-indigo-50 font-semibold mt-2"
+              onClick={onOpenAI}
+            >
+              <BrainCircuit size={16} className="mr-2" />
+              Abrir asistente
+            </Button>
           </CardContent>
         </Card>
 
+        {/* Alertas */}
         <Card className="bg-white border-slate-200 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-bold flex items-center gap-2">

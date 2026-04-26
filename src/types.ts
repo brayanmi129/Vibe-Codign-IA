@@ -25,6 +25,8 @@ export interface Store {
     primaryColor: string;
     secondaryColor: string;
     backgroundColor: string;
+    textColor: string;
+    sidebarColor: string;
   };
 }
 
@@ -112,4 +114,16 @@ export interface AIInsight {
   description: string;
   priority: 'low' | 'medium' | 'high';
   productId?: string;
+}
+
+export interface TempStoreSettings {
+  name: string;
+  businessType: string;
+  description: string;
+  logoUrl: string;
+  legalName: string;
+  nit: string;
+  fiscalAddress: string;
+  fiscalPhone: string;
+  branding: { primaryColor: string; secondaryColor: string; backgroundColor: string; textColor: string; sidebarColor: string };
 }

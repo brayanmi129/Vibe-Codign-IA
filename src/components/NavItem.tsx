@@ -16,7 +16,7 @@ export function NavItem({ active, onClick, icon, label }: NavItemProps) {
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all ${
         active
           ? "bg-brand-primary text-white shadow-lg shadow-brand-primary/20"
-          : "text-slate-500 hover:bg-brand-primary/5 hover:text-brand-primary"
+          : "text-brand-text/60 hover:bg-brand-primary/8 hover:text-brand-primary"
       }`}
     >
       {icon}

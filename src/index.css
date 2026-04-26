@@ -43,6 +43,8 @@
     --color-brand-primary: var(--brand-primary);
     --color-brand-secondary: var(--brand-secondary);
     --color-brand-bg: var(--brand-bg);
+    --color-brand-text: var(--brand-text);
+    --color-brand-sidebar: var(--brand-sidebar);
 
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
@@ -57,6 +59,8 @@
     --brand-primary: #4f46e5;
     --brand-secondary: #4338ca;
     --brand-bg: #f8fafc;
+    --brand-text: #0f172a;
+    --brand-sidebar: #ffffff;
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
