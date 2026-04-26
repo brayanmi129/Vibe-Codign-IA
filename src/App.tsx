@@ -119,11 +119,13 @@ import { SaleConfirmationDialog } from "./components/SaleConfirmationDialog";
 import {
   TAX_RATE,
   generateInvoiceNumber,
+  generateInvoicePdf,
   calculateTotals,
   downloadInvoicePdf,
   sendInvoiceByEmail,
   type InvoicePdfPayload,
 } from "./lib/invoiceService";
+import { uploadInvoicePdf } from "./lib/supabase";
 import { Customer } from "./types";
 import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard";
 import Sketch from '@uiw/react-color-sketch';
@@ -1100,7 +1102,19 @@ export default function App() {
         });
       }
 
-      // 6. Cerrar form, limpiar carrito y abrir confirmación
+      // 6. Subir PDF a Supabase Storage y guardar la URL en Firestore (no bloqueante)
+      try {
+        const pdfDoc = generateInvoicePdf(invoicePayload);
+        const pdfBlob = pdfDoc.output("blob") as Blob;
+        const pdfUrl = await uploadInvoicePdf(currentStore.id, invoiceNumber, pdfBlob);
+        await updateDoc(doc(db, "stores", currentStore.id, "sales", saleId), {
+          invoicePdfUrl: pdfUrl,
+        });
+      } catch (uploadErr) {
+        console.warn("PDF upload to Supabase failed (non-critical):", uploadErr);
+      }
+
+      // 8. Cerrar form, limpiar carrito y abrir confirmación
       setIsCustomerFormOpen(false);
       setCart([]);
       setSaleConfirmation({
@@ -1137,15 +1151,14 @@ export default function App() {
     setActiveTab("dashboard");
   };
 
-  const handleRestock = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRestock = async () => {
     if (!user || !currentStore) return;
     if (!restockProductId || !restockQuantity) return;
 
     try {
       const qty = parseInt(restockQuantity);
       const product = products.find(p => p.id === restockProductId);
-      
+
       if (!product) return;
 
       const restockId = `restock_${Date.now()}`;
@@ -1156,16 +1169,18 @@ export default function App() {
         productName: product.name,
         quantity: qty,
         date: new Date().toISOString(),
-        userId: user.uid
+        userId: user.uid,
       };
 
-      // 1. Create restock record
+      if (activeBranchId) {
+        newRestock.branchId = activeBranchId;
+      }
+
       await setDoc(doc(db, "stores", currentStore.id, "restocks", restockId), newRestock);
 
-      // 2. Update product quantity
       await updateDoc(doc(db, "stores", currentStore.id, "products", product.id), {
         quantity: product.quantity + qty,
-        lastUpdated: new Date().toISOString()
+        lastUpdated: new Date().toISOString(),
       });
 
       setRestockProductId("");
@@ -2240,32 +2255,9 @@ export default function App() {
                             className="bg-slate-50 border-slate-200"
                           />
                         </div>
-                        <Button 
+                        <Button
                           className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100"
-                          onClick={() => {
-                            if (!restockProductId || !restockQuantity || parseInt(restockQuantity) <= 0) {
-                              toast.error("Por favor completa los campos correctamente");
-                              return;
-                            }
-                            const qty = parseInt(restockQuantity);
-                            const product = products.find(p => p.id === restockProductId);
-                            if (!product) return;
-
-                            setProducts(products.map(p => p.id === restockProductId ? { ...p, quantity: p.quantity + qty } : p));
-                            
-                            const newRestock: RestockRecord = {
-                              id: Math.random().toString(36).substr(2, 9),
-                              storeId: currentStore?.id || "demo",
-                              productId: restockProductId,
-                              quantity: qty,
-                              date: new Date().toISOString(),
-                              userId: user?.uid || "demo"
-                            };
-                            setRestocks([newRestock, ...restocks]);
-                            setRestockQuantity("");
-                            setRestockProductId("");
-                            toast.success(`Entrada registrada: +${qty} ${product.name}`);
-                          }}
+                          onClick={handleRestock}
                         >
                           <Plus size={16} className="mr-2" /> Registrar Entrada
                         </Button>
@@ -2588,6 +2580,7 @@ export default function App() {
                                     <TableHead>Hora</TableHead>
                                     <TableHead>Cant.</TableHead>
                                     <TableHead className="text-right">Total</TableHead>
+                                    <TableHead className="text-center">Factura</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -2621,12 +2614,31 @@ export default function App() {
                                           <TableCell className="text-right font-semibold">
                                             {formatCurrency(sale.totalAmount)}
                                           </TableCell>
+                                          <TableCell className="text-center">
+                                            {sale.customer ? (
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                                title={`Descargar ${sale.invoiceNumber || 'factura'}`}
+                                                onClick={() => downloadInvoicePdf({
+                                                  sale,
+                                                  store: currentStore!,
+                                                  customer: sale.customer!,
+                                                })}
+                                              >
+                                                <Download size={14} />
+                                              </Button>
+                                            ) : (
+                                              <span className="text-slate-300 text-xs">—</span>
+                                            )}
+                                          </TableCell>
                                         </TableRow>
                                       );
                                     })}
                                   {filteredSales.length === 0 && (
                                     <TableRow>
-                                      <TableCell colSpan={5} className="h-32 text-center text-slate-400 italic">
+                                      <TableCell colSpan={6} className="h-32 text-center text-slate-400 italic">
                                         No hay ventas registradas para este día.
                                       </TableCell>
                                     </TableRow>
