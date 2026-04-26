@@ -10,6 +10,8 @@ import { Separator } from "@/components/ui/separator";
 import { ShieldCheck, RefreshCw, Palette, Upload, ImageIcon, ChevronDown, ChevronUp, BrainCircuit, Building2, Sparkles } from "lucide-react";
 import { TempStoreSettings } from "@/types";
 import { suggestBrandColors } from "@/lib/inventoryService";
+import { getContrastColor } from "@/lib/utils";
+import { COLOR_PRESETS, FONT_PRESETS } from "@/constants";
 
 interface SettingsPageProps {
   storeId: string;
@@ -255,10 +257,37 @@ export function SettingsPage({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* 5 color swatches */}
-                  <div className="space-y-4">
+                  {/* Presets and custom pickers */}
+                  <div className="space-y-6">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Interfaz</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Estilos Predeterminados</p>
+                      <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                        {COLOR_PRESETS.map((p) => (
+                          <button
+                            key={p.name}
+                            type="button"
+                            onClick={() => {
+                              setBranding("primaryColor", p.primaryColor);
+                              setBranding("secondaryColor", p.secondaryColor);
+                              setBranding("backgroundColor", p.backgroundColor);
+                              setBranding("textColor", p.textColor);
+                              setBranding("textSecondaryColor", p.textSecondaryColor);
+                              if (p.textAccentColor) setBranding("textAccentColor", p.textAccentColor);
+                            }}
+                            className={`w-full aspect-square rounded-lg border-2 transition-all hover:scale-110 active:scale-95 shadow-sm overflow-hidden flex flex-col ${
+                              branding.primaryColor === p.primaryColor ? "border-indigo-500 ring-2 ring-indigo-200" : "border-slate-200"
+                            }`}
+                            title={p.name}
+                          >
+                            <div className="flex-1 w-full" style={{ backgroundColor: p.primaryColor }} />
+                            <div className="h-1.5 w-full" style={{ backgroundColor: p.secondaryColor }} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Personalización Manual</p>
                       <div className="grid grid-cols-3 gap-3">
                         <ColorField label="Principal" color={branding.primaryColor} onChange={v => setBranding("primaryColor", v)} />
                         <ColorField label="Secundario" color={branding.secondaryColor} onChange={v => setBranding("secondaryColor", v)} />
@@ -267,34 +296,81 @@ export function SettingsPage({
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Tipografía</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <ColorField label="Fuente principal" color={branding.textColor} onChange={v => setBranding("textColor", v)} />
-                        <ColorField label="Fuente secundaria" color={branding.textSecondaryColor} onChange={v => setBranding("textSecondaryColor", v)} />
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        <ColorField label="Color principal" color={branding.textColor} onChange={v => setBranding("textColor", v)} />
+                        <ColorField label="Color secundario" color={branding.textSecondaryColor} onChange={v => setBranding("textSecondaryColor", v)} />
+                      </div>
+                      <div className="mb-4">
+                        <ColorField label="Color de destaque" color={branding.textAccentColor || branding.primaryColor} onChange={v => setBranding("textAccentColor", v)} />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Estilo de letra (Fuente)</p>
+                        <Select
+                          value={branding.fontFamily || FONT_PRESETS[0].value}
+                          onValueChange={(val) => setBranding("fontFamily", val)}
+                        >
+                          <SelectTrigger className="w-full bg-slate-50 border-slate-200 h-9 text-xs">
+                            <SelectValue placeholder="Selecciona una fuente" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[250px]">
+                            {FONT_PRESETS.map(font => (
+                              <SelectItem 
+                                key={font.value} 
+                                value={font.value}
+                                style={{ fontFamily: font.value }}
+                              >
+                                {font.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </div>
 
                   {/* Live preview */}
                   <div
-                    className="rounded-2xl border border-slate-200 p-4 flex flex-col gap-3 transition-all duration-300"
-                    style={{ backgroundColor: preview.backgroundColor }}
+                    className="rounded-2xl border border-slate-200 p-5 flex flex-col gap-4 transition-all duration-300 shadow-xl"
+                    style={{ 
+                      backgroundColor: preview.backgroundColor,
+                      fontFamily: preview.fontFamily || 'inherit'
+                    }}
                   >
-                    <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: preview.textSecondaryColor }}>Vista previa</p>
-                    <p className="text-sm font-bold leading-tight" style={{ color: preview.textColor }}>Resumen de Negocio</p>
-                    <p className="text-[10px]" style={{ color: preview.textSecondaryColor }}>Ventas del día y métricas principales.</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[preview.primaryColor, preview.secondaryColor].map((c, i) => (
-                        <div key={i} className="bg-white rounded-xl p-2.5 shadow-sm flex flex-col gap-1.5">
-                          <div className="w-5 h-5 rounded-lg" style={{ backgroundColor: c + '25' }}>
-                            <div className="w-2.5 h-2.5 m-1.25 rounded-sm" style={{ backgroundColor: c }} />
+                    <div className="flex justify-between items-center">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: preview.textSecondaryColor }}>Panel de Control</p>
+                      <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${getContrastColor(preview.backgroundColor) === 'white' ? 'bg-white/10 text-white/60' : 'bg-black/5 text-black/40'}`}>
+                        Contraste OK
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: preview.textSecondaryColor }}>VENTAS TOTALES</p>
+                      <h3 className="text-2xl font-black tracking-tight" style={{ color: preview.textColor }}>$1.240.000</h3>
+                      <p className="text-[11px] font-bold flex items-center gap-1" style={{ color: preview.textAccentColor || preview.primaryColor }}>
+                        <Sparkles size={10} /> +12% esta semana
+                      </p>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      {[1, 2].map(i => (
+                        <div key={i} className="rounded-2xl p-3 border border-slate-100 flex flex-col gap-2 bg-white/50 backdrop-blur-sm">
+                          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: i === 1 ? preview.primaryColor + '15' : preview.secondaryColor + '15' }}>
+                            <div className="w-4 h-4 rounded-md" style={{ backgroundColor: i === 1 ? preview.primaryColor : preview.secondaryColor }} />
                           </div>
-                          <div className="w-full h-1 rounded-full" style={{ backgroundColor: preview.textSecondaryColor + '30' }} />
-                          <div className="w-3/4 h-2.5 rounded-full" style={{ backgroundColor: c }} />
+                          <div className="w-full h-1 rounded-full bg-slate-100" />
+                          <div className="w-2/3 h-2 rounded-full" style={{ backgroundColor: preview.textSecondaryColor + '40' }} />
                         </div>
                       ))}
                     </div>
-                    <div className="rounded-xl h-7 flex items-center justify-center text-white text-[10px] font-bold shadow" style={{ backgroundColor: preview.primaryColor }}>
-                      Botón de acción
+
+                    <div 
+                      className="rounded-xl h-10 flex items-center justify-center text-xs font-black shadow-lg transition-all transform hover:scale-[1.02] cursor-default" 
+                      style={{ 
+                        backgroundColor: preview.primaryColor,
+                        color: getContrastColor(preview.primaryColor) === "white" ? "#ffffff" : "#0f172a"
+                      }}
+                    >
+                      Botón Principal
                     </div>
                   </div>
                 </div>

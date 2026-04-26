@@ -45,6 +45,7 @@ import { NavItem } from "./components/NavItem";
 import { generateDemoData } from "./lib/demoData";
 import { generateProductCode } from "./lib/formatters";
 import { checkIsSuperAdmin } from "./lib/superAdminService";
+import { getContrastColor } from "./lib/utils";
 import { SuperAdminPage } from "./pages/SuperAdminPage";
 
 // Pages
@@ -927,10 +928,20 @@ export default function App() {
   }
 
   // ─── Render: Main App ─────────────────────────────────────────────
-  const primaryColor = currentStore?.branding?.primaryColor;
+  const primaryColor = currentStore?.branding?.primaryColor || "#6366f1";
+  const fontFamily = currentStore?.branding?.fontFamily;
+  const textColor = currentStore?.branding?.textColor || "#0f172a";
+  const backgroundColor = currentStore?.branding?.backgroundColor || "#f8fafc";
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-100 flex justify-center">
+    <div 
+      className="h-screen overflow-hidden flex justify-center font-sans transition-colors duration-500"
+      style={{ 
+        '--brand-font': fontFamily,
+        backgroundColor: backgroundColor,
+        color: textColor
+      } as React.CSSProperties}
+    >
       <Toaster position="top-right" />
       <div className="w-full max-w-[1600px] bg-white flex flex-col md:flex-row shadow-2xl shadow-slate-200/50 h-full relative">
 
@@ -1012,43 +1023,54 @@ export default function App() {
           style={{ backgroundColor: primaryColor || "#4f46e5" }}
         >
           {/* Logo + store name */}
-          <div className="flex items-center gap-4 mb-8 px-2 cursor-pointer group" onClick={() => setActiveTab("dashboard")}>
+          <div 
+            className={`flex items-center gap-4 mb-8 px-2 cursor-pointer group ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "text-slate-900" : "text-white"}`} 
+            onClick={() => setActiveTab("dashboard")}
+          >
             {currentStore?.logoUrl ? (
               <div className="relative">
                 <img src={currentStore.logoUrl} alt="logo" className="w-12 h-12 rounded-2xl object-cover flex-shrink-0 ring-4 ring-white/10 shadow-2xl transition-transform group-hover:scale-105" />
                 <div className="absolute inset-0 rounded-2xl shadow-[inset_0_0_12px_rgba(255,255,255,0.1)] pointer-events-none" />
               </div>
             ) : (
-              <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center flex-shrink-0 ring-4 ring-white/5">
-                <Package className="text-white w-7 h-7" />
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ring-4 ring-white/5 ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "bg-black/10" : "bg-white/10"}`}>
+                <Package className={`w-7 h-7 ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "text-slate-900" : "text-white"}`} />
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-extrabold tracking-tight text-white leading-tight truncate">{currentStore?.name || "StockMaster"}</h1>
+              <h1 className={`text-xl font-extrabold tracking-tight leading-tight truncate ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "text-slate-900" : "text-white"}`}>
+                {currentStore?.name || "StockMaster"}
+              </h1>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <p className="text-[10px] uppercase tracking-widest font-black text-white/50">Sistema Activo</p>
+                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "bg-slate-900" : "bg-emerald-400"}`} />
+                <p className={`text-[10px] uppercase tracking-widest font-black ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "text-slate-900/40" : "text-white/50"}`}>
+                  Sistema Activo
+                </p>
               </div>
             </div>
           </div>
 
           {/* Store / branch selector */}
           <div className="mb-6 px-2 space-y-2">
-            <div className="flex items-center gap-3 px-4 py-3 bg-white/5 rounded-2xl border border-white/5 backdrop-blur-sm">
-              <StoreIcon size={16} className="text-white/40 shrink-0" />
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-sm ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "bg-black/5 border-black/5" : "bg-white/5 border-white/5"}`}>
+              <StoreIcon size={16} className={`shrink-0 ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "text-slate-900/40" : "text-white/40"}`} />
               <div className="overflow-hidden">
-                <p className="text-[11px] font-bold text-white/90 truncate leading-none mb-1">{currentStore?.name}</p>
+                <p className={`text-[11px] font-bold truncate leading-none mb-1 ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "text-slate-900" : "text-white/90"}`}>
+                  {currentStore?.name}
+                </p>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-black text-white/30 uppercase tracking-tighter bg-white/5 px-1.5 py-0.5 rounded leading-none">{memberRole}</span>
+                  <span className={`text-[9px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded leading-none ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "bg-black/5 text-slate-900/40" : "bg-white/5 text-white/30"}`}>
+                    {memberRole}
+                  </span>
                 </div>
               </div>
             </div>
             {branches.length > 0 && (
               <Select value={activeBranchId ?? "all"} onValueChange={(v) => setActiveBranchId(v === "all" ? null : v)} disabled={!isAdmin}>
-                <SelectTrigger className="w-full h-10 bg-white/5 border-white/10 text-white text-xs rounded-xl focus:ring-white/20">
+                <SelectTrigger className={`w-full h-10 border text-xs rounded-xl focus:ring-opacity-20 ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "bg-black/5 border-black/10 text-slate-950 focus:ring-black" : "bg-white/5 border-white/10 text-white focus:ring-white"}`}>
                   <SelectValue placeholder="Sucursal" />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-white/10 text-white">
+                <SelectContent className={`${getContrastColor(primaryColor || "#4f46e5") === "black" ? "bg-white border-slate-200 text-slate-950" : "bg-slate-900 border-white/10 text-white"}`}>
                   {isAdmin && <SelectItem value="all">Todas las sucursales</SelectItem>}
                   {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                 </SelectContent>
@@ -1058,16 +1080,60 @@ export default function App() {
 
           {/* Navigation */}
           <nav className="space-y-1 flex-1">
-            <NavItem dark active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} icon={<LayoutDashboard size={18} />} label="Dashboard" />
-            <NavItem dark active={activeTab === "inventory"} onClick={() => setActiveTab("inventory")} icon={<Package size={18} />} label="Inventario" />
-            <NavItem dark active={activeTab === "products"} onClick={() => setActiveTab("products")} icon={<Edit2 size={18} />} label="Productos" />
-            {isAdmin && <NavItem dark active={activeTab === "team"} onClick={() => setActiveTab("team")} icon={<Users size={18} />} label="Equipo" />}
-            <NavItem dark active={activeTab === "new-sale"} onClick={() => setActiveTab("new-sale")} icon={<Plus size={18} />} label="Nueva Venta" />
-            <NavItem dark active={activeTab === "sales"} onClick={() => setActiveTab("sales")} icon={<ShoppingCart size={18} />} label="Ventas" />
-            <NavItem dark active={activeTab === "ai"} onClick={() => setActiveTab("ai")} icon={<BrainCircuit size={18} />} label="Asistente IA" />
+            <NavItem 
+              dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
+              active={activeTab === "dashboard"} 
+              onClick={() => setActiveTab("dashboard")} 
+              icon={<LayoutDashboard size={18} />} 
+              label="Dashboard" 
+            />
+            <NavItem 
+              dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
+              active={activeTab === "inventory"} 
+              onClick={() => setActiveTab("inventory")} 
+              icon={<Package size={18} />} 
+              label="Inventario" 
+            />
+            <NavItem 
+              dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
+              active={activeTab === "products"} 
+              onClick={() => setActiveTab("products")} 
+              icon={<Edit2 size={18} />} 
+              label="Productos" 
+            />
+            {isAdmin && (
+              <NavItem 
+                dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
+                active={activeTab === "team"} 
+                onClick={() => setActiveTab("team")} 
+                icon={<Users size={18} />} 
+                label="Equipo" 
+              />
+            )}
+            <NavItem 
+              dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
+              active={activeTab === "new-sale"} 
+              onClick={() => setActiveTab("new-sale")} 
+              icon={<Plus size={18} />} 
+              label="Nueva Venta" 
+            />
+            <NavItem 
+              dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
+              active={activeTab === "sales"} 
+              onClick={() => setActiveTab("sales")} 
+              icon={<ShoppingCart size={18} />} 
+              label="Ventas" 
+            />
+            <NavItem 
+              dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
+              active={activeTab === "ai"} 
+              onClick={() => setActiveTab("ai")} 
+              icon={<BrainCircuit size={18} />} 
+              label="Asistente IA" 
+            />
             {isAdmin && (
               <NavItem
-                dark
+                dark={getContrastColor(primaryColor || "#4f46e5") === "white"}
                 active={activeTab === "settings"}
                 onClick={() => { setActiveTab("settings"); if (currentStore) setTempSettings(buildTempSettings(currentStore)); }}
                 icon={<Settings size={18} />}
@@ -1077,21 +1143,29 @@ export default function App() {
           </nav>
 
           {/* User section */}
-          <div className="mt-auto pt-6 border-t border-white/10 space-y-2">
+          <div className={`mt-auto pt-6 border-t space-y-2 ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "border-black/5" : "border-white/10"}`}>
             <div className="flex items-center gap-3 px-3 py-2">
-              <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/10 overflow-hidden flex-shrink-0 shadow-inner">
+              <div className={`w-10 h-10 rounded-2xl border overflow-hidden flex-shrink-0 shadow-inner ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "bg-black/10 border-black/10" : "bg-white/10 border-white/10"}`}>
                 {user.photoURL
                   ? <img src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                  : <UserIcon className="w-full h-full p-2 text-white/40" />}
+                  : <UserIcon className={`w-full h-full p-2 ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "text-slate-900/40" : "text-white/40"}`} />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold text-white truncate">{user.displayName}</p>
-                <p className="text-[10px] text-white/40 truncate font-medium">{user.email}</p>
+                <p className={`text-[13px] font-bold truncate ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "text-slate-900" : "text-white"}`}>
+                  {user.displayName}
+                </p>
+                <p className={`text-[10px] truncate font-medium ${getContrastColor(primaryColor || "#4f46e5") === "black" ? "text-slate-900/40" : "text-white/40"}`}>
+                  {user.email}
+                </p>
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-white/60 hover:text-white hover:bg-white/10 transition-all text-sm font-semibold group"
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-sm font-semibold group ${
+                getContrastColor(primaryColor || "#4f46e5") === "black" 
+                  ? "text-slate-900/60 hover:text-slate-950 hover:bg-black/5" 
+                  : "text-white/60 hover:text-white hover:bg-white/10"
+              }`}
             >
               <LogOut size={16} className="group-hover:translate-x-0.5 transition-transform" /><span>Cerrar Sesión</span>
             </button>

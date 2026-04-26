@@ -27,6 +27,8 @@ export interface Store {
     backgroundColor: string;
     textColor: string;
     textSecondaryColor: string;
+    textAccentColor?: string;
+    fontFamily?: string;
   };
 }
 
@@ -138,5 +140,13 @@ export interface TempStoreSettings {
   nit: string;
   fiscalAddress: string;
   fiscalPhone: string;
-  branding: { primaryColor: string; secondaryColor: string; backgroundColor: string; textColor: string; textSecondaryColor: string };
+  branding: { 
+    primaryColor: string; 
+    secondaryColor: string; 
+    backgroundColor: string; 
+    textColor: string; 
+    textSecondaryColor: string;
+    textAccentColor?: string;
+    fontFamily?: string;
+  };
 }

@@ -22,6 +22,8 @@ import {
   SelectValue,
 } from './ui/select';
 import { UserRole } from '../types';
+import { getContrastColor } from '../lib/utils';
+import { COLOR_PRESETS, FONT_PRESETS } from '../constants';
 
 interface OnboardingWizardProps {
   onComplete: (data: OnboardingData) => void;
@@ -36,6 +38,10 @@ export interface OnboardingData {
     primaryColor: string;
     secondaryColor: string;
     backgroundColor: string;
+    textColor: string;
+    textSecondaryColor: string;
+    textAccentColor: string;
+    fontFamily?: string;
   };
   logoFile?: File;
   adminInfo?: {
@@ -54,15 +60,6 @@ const CATEGORIES = [
   { id: 'health', label: 'Salud', icon: '🏥' },
   { id: 'retail', label: 'Retail', icon: '🛍️' },
   { id: 'other', label: 'Otro', icon: '✨' },
-];
-
-const COLOR_PRESETS = [
-  { name: 'Modern Indigo', primaryColor: '#6366f1', secondaryColor: '#4f46e5', backgroundColor: '#f8fafc' },
-  { name: 'Business Emerald', primaryColor: '#059669', secondaryColor: '#047857', backgroundColor: '#f0fdf4' },
-  { name: 'Dark Graphite', primaryColor: '#1e293b', secondaryColor: '#0f172a', backgroundColor: '#f8fafc' },
-  { name: 'Royal Violet', primaryColor: '#8b5cf6', secondaryColor: '#7c3aed', backgroundColor: '#f5f3ff' },
-  { name: 'Golden Amber', primaryColor: '#d97706', secondaryColor: '#b45309', backgroundColor: '#fffbeb' },
-  { name: 'Vibrant Rose', primaryColor: '#f43f5e', secondaryColor: '#e11d48', backgroundColor: '#fff1f2' },
 ];
 
 const DEFAULT_BRANDING = COLOR_PRESETS[0];
@@ -379,6 +376,36 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                       </label>
                       <span className="text-xs font-mono text-slate-400">{data.branding.primaryColor}</span>
                     </div>
+
+                    {/* Font selection */}
+                    <div className="mt-6">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Estilo de Letra (Fuente)</p>
+                      <Select
+                        value={data.branding.fontFamily || FONT_PRESETS[0].value}
+                        onValueChange={(val) => setData(prev => ({ 
+                          ...prev, 
+                          branding: { ...prev.branding, fontFamily: val } 
+                        }))}
+                      >
+                        <SelectTrigger className="w-full h-12 rounded-xl border-2 border-slate-100 bg-slate-50/50">
+                          <SelectValue placeholder="Selecciona una fuente" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[300px]">
+                          {FONT_PRESETS.map(font => (
+                            <SelectItem 
+                              key={font.value} 
+                              value={font.value}
+                              style={{ fontFamily: font.value }}
+                            >
+                              {font.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="mt-2 text-[10px] text-slate-400 font-medium italic">
+                        Esta fuente se aplicará a toda tu tienda.
+                      </p>
+                    </div>
                   </div>
 
                   <div className="flex gap-3">
@@ -674,12 +701,19 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                     {[
                       { label: 'Tienda', value: data.storeName },
                       { label: 'Categoría', value: CATEGORIES.find(c => c.id === data.businessType)?.label },
-                      { label: 'Color', value: (
+                      { label: 'Color de Marca', value: (
                         <span className="flex items-center gap-2 justify-end">
-                          <span className="w-4 h-4 rounded-full inline-block" style={{ backgroundColor: data.branding.primaryColor }} />
-                          <span>{data.branding.primaryColor}</span>
+                          <span className="w-4 h-4 rounded-full inline-block border border-slate-200" style={{ backgroundColor: data.branding.primaryColor }} />
+                          <span className="font-mono text-xs">{data.branding.primaryColor}</span>
                         </span>
                       )},
+                      { label: 'Color Destaque', value: (
+                        <span className="flex items-center gap-2 justify-end">
+                          <span className="w-4 h-4 rounded-full inline-block border border-slate-200" style={{ backgroundColor: data.branding.textAccentColor || data.branding.primaryColor }} />
+                          <span className="font-mono text-xs">{data.branding.textAccentColor || data.branding.primaryColor}</span>
+                        </span>
+                      )},
+                      { label: 'Fuente', value: FONT_PRESETS.find(f => f.value === (data.branding.fontFamily || FONT_PRESETS[0].value))?.name },
                       { label: 'Logo', value: logoPreview ? '✓ Subido' : 'Sin logo' },
                       { label: 'Equipo', value: `${data.employees.length} miembro${data.employees.length !== 1 ? 's' : ''}` },
                     ].map(row => (
@@ -693,8 +727,11 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                   <Button
                     onClick={() => onComplete(data)}
                     size="lg"
-                    className="w-full h-14 rounded-2xl text-base font-semibold shadow-xl shadow-indigo-100 relative overflow-hidden text-white"
-                    style={{ backgroundColor: data.branding.primaryColor }}
+                    className="w-full h-14 rounded-2xl text-base font-semibold shadow-xl shadow-indigo-100 relative overflow-hidden transition-colors"
+                    style={{ 
+                      backgroundColor: data.branding.primaryColor,
+                      color: getContrastColor(data.branding.primaryColor) === "white" ? "#ffffff" : "#0f172a"
+                    }}
                   >
                     <span className="relative z-10 flex items-center gap-2">
                       Crear mi tienda <Sparkles size={18} />

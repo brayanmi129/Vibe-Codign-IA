@@ -11,30 +11,48 @@ export interface BrandColorSuggestion {
   backgroundColor: string;
   textColor: string;
   textSecondaryColor: string;
+  textAccentColor: string;
+  fontFamily: string;
 }
 
 export async function suggestBrandColors(description: string, businessType: string): Promise<BrandColorSuggestion | null> {
   if (!process.env.GEMINI_API_KEY) return null;
 
   const prompt = `Eres un experto en branding y diseño UI para apps de negocios latinoamericanos.
-Sugiere una paleta de 5 colores para este negocio. Devuelve SOLO JSON con exactamente estos campos en hex:
+Sugiere una paleta de colores y una tipografía adecuada para este negocio. Devuelve SOLO JSON con exactamente estos campos:
 {
   "primaryColor": "#xxxxxx",
   "secondaryColor": "#xxxxxx",
   "backgroundColor": "#xxxxxx",
   "textColor": "#xxxxxx",
-  "textSecondaryColor": "#xxxxxx"
+  "textSecondaryColor": "#xxxxxx",
+  "textAccentColor": "#xxxxxx",
+  "fontFamily": "Nombre de la fuente, sans-serif"
 }
+
+Categorías de fuentes recomendadas (elige una que encaje):
+- 'Inter, sans-serif' (General, Neutra)
+- 'Outfit, sans-serif' (Moderna, Amigable)
+- 'Space Grotesk, sans-serif' (Tecnológica, Futurista)
+- 'Playfair Display, serif' (Elegante, Lujo)
+- 'JetBrains Mono, monospace' (Técnica, Detallista)
+- 'Montserrat, sans-serif' (Corpórea, Sólida)
+- 'Fraunces, serif' (Vintage, Artesanal)
+- 'Syne, sans-serif' (Artística, Vanguardista)
+- 'Lexend, sans-serif' (Educativa, Legible)
+- 'Bricolage Grotesque, sans-serif' (Audaz, Moderna)
 
 Tipo de negocio: ${businessType || "tienda general"}
 Descripción: ${description || "negocio de retail en Colombia"}
 
-Reglas estrictas:
-- primaryColor: color de marca vibrante y representativo del sector
+Reglas de color:
+- primaryColor: color vibrante de marca
 - secondaryColor: tono complementario o análogo al principal
 - backgroundColor: muy claro, ideal para fondo de app (mínimo #f0f0f0)
-- textColor: oscuro para máxima legibilidad como texto en sidebar (máximo #2a2a2a)
-- textSecondaryColor: gris suave para subtítulos (#555 - #888)`;
+- textColor: oscuro para máxima legibilidad como texto principal (máximo #2a2a2a)
+- textSecondaryColor: gris medio para textos secundarios (#555 - #777)
+- textAccentColor: color destacado para links o labels, basado en la marca
+- fontFamily: Una de las opciones mencionadas arriba que mejor represente al negocio.`;
 
   try {
     const response = await ai.models.generateContent({
