@@ -1,43 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Store as StoreIcon, 
-  Palette, 
-  User as UserIcon, 
-  Users, 
-  BrainCircuit, 
-  CheckCircle2, 
-  ArrowRight, 
+import {
+  ArrowRight,
   ArrowLeft,
-  Briefcase,
+  CheckCircle2,
   Sparkles,
-  Layout,
   Plus,
   Trash2,
-  ChevronRight
+  Upload,
+  ImagePlus,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle,
-  CardFooter
-} from './ui/card';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from './ui/select';
 import { Badge } from './ui/badge';
-import { Separator } from './ui/separator';
-import { UserRole, Store, StoreMember } from '../types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
+import { UserRole } from '../types';
 
 interface OnboardingWizardProps {
   onComplete: (data: OnboardingData) => void;
@@ -53,6 +37,7 @@ export interface OnboardingData {
     secondaryColor: string;
     backgroundColor: string;
   };
+  logoFile?: File;
   adminInfo?: {
     displayName: string;
     email: string;
@@ -62,599 +47,694 @@ export interface OnboardingData {
   aiDescription: string;
 }
 
-const STEPS = [
-  { id: 'welcome', title: 'Bienvenida', icon: <Sparkles className="w-5 h-5" /> },
-  { id: 'store-info', title: 'Tu Tienda', icon: <StoreIcon className="w-5 h-5" /> },
-  { id: 'branding', title: 'Identidad', icon: <Palette className="w-5 h-5" /> },
-  { id: 'admin', title: 'Cuenta', icon: <UserIcon className="w-5 h-5" /> },
-  { id: 'employees', title: 'Equipo', icon: <Users className="w-5 h-5" /> },
-  { id: 'ai-context', title: 'Cerebro IA', icon: <BrainCircuit className="w-5 h-5" /> },
-  { id: 'review', title: 'Confirmar', icon: <CheckCircle2 className="w-5 h-5" /> },
-];
-
 const CATEGORIES = [
   { id: 'tech', label: 'Tecnología', icon: '💻' },
-  { id: 'fashion', label: 'Moda/Ropa', icon: '👕' },
-  { id: 'food', label: 'Alimentos/Restaurante', icon: '🍔' },
-  { id: 'health', label: 'Salud/Bienestar', icon: '🏥' },
+  { id: 'fashion', label: 'Moda / Ropa', icon: '👕' },
+  { id: 'food', label: 'Alimentos', icon: '🍔' },
+  { id: 'health', label: 'Salud', icon: '🏥' },
+  { id: 'retail', label: 'Retail', icon: '🛍️' },
   { id: 'other', label: 'Otro', icon: '✨' },
 ];
 
 const COLOR_PRESETS = [
-  { name: 'Azul Moderno', primaryColor: '#2563EB', secondaryColor: '#1E40AF', backgroundColor: '#F8FAFC' },
-  { name: 'Verde SaaS', primaryColor: '#10B981', secondaryColor: '#047857', backgroundColor: '#F0FDF4' },
-  { name: 'Morado Tech', primaryColor: '#7C3AED', secondaryColor: '#5B21B6', backgroundColor: '#F5F3FF' },
-  { name: 'Oscuro Elegante', primaryColor: '#3B82F6', secondaryColor: '#1D4ED8', backgroundColor: '#0F172A', isDark: true },
+  { name: 'Índigo', primaryColor: '#4f46e5', secondaryColor: '#4338ca', backgroundColor: '#f8fafc' },
+  { name: 'Esmeralda', primaryColor: '#10b981', secondaryColor: '#047857', backgroundColor: '#f0fdf4' },
+  { name: 'Violeta', primaryColor: '#7c3aed', secondaryColor: '#5b21b6', backgroundColor: '#f5f3ff' },
+  { name: 'Rosa', primaryColor: '#ec4899', secondaryColor: '#be185d', backgroundColor: '#fdf2f8' },
+  { name: 'Naranja', primaryColor: '#f97316', secondaryColor: '#c2410c', backgroundColor: '#fff7ed' },
+  { name: 'Slate', primaryColor: '#475569', secondaryColor: '#334155', backgroundColor: '#f8fafc' },
 ];
 
+const DEFAULT_BRANDING = COLOR_PRESETS[0];
+
+// 8 steps: 0=welcome, 1=name, 2=category, 3=branding, 4=admin, 5=ai, 6=employees, 7=launch
+const TOTAL_STEPS = 8;
+
+const slideVariants = {
+  enter: (dir: number) => ({ opacity: 0, x: dir > 0 ? 48 : -48, filter: 'blur(6px)' }),
+  center: { opacity: 1, x: 0, filter: 'blur(0px)' },
+  exit: (dir: number) => ({ opacity: 0, x: dir > 0 ? -48 : 48, filter: 'blur(6px)' }),
+};
+
+const slideTransition = { duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] as any };
+
 export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: OnboardingWizardProps) {
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [step, setStep] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [isDraggingLogo, setIsDraggingLogo] = useState(false);
+
   const [data, setData] = useState<OnboardingData>({
     storeName: '',
-    businessType: 'tech',
-    branding: COLOR_PRESETS[0],
+    businessType: 'retail',
+    branding: DEFAULT_BRANDING,
     employees: [],
     aiDescription: '',
-    adminInfo: currentUser ? {
-      displayName: currentUser.displayName || '',
-      email: currentUser.email || '',
-    } : {
-      displayName: '',
-      email: '',
-    }
+    adminInfo: currentUser
+      ? { displayName: currentUser.displayName || '', email: currentUser.email || '' }
+      : { displayName: '', email: '', password: '' },
   });
 
   const [newEmployee, setNewEmployee] = useState({ email: '', role: 'employee' as UserRole, displayName: '' });
 
-  const nextStep = () => {
-    if (currentStepIndex < STEPS.length - 1) {
-      setCurrentStepIndex(prev => prev + 1);
-    }
+  useEffect(() => {
+    return () => { if (logoPreview) URL.revokeObjectURL(logoPreview); };
+  }, []);
+
+  const go = (delta: number) => {
+    setDirection(delta);
+    setStep(s => Math.max(0, Math.min(TOTAL_STEPS - 1, s + delta)));
   };
 
-  const prevStep = () => {
-    if (currentStepIndex > 0) {
-      setCurrentStepIndex(prev => prev - 1);
-    }
+  const canContinue = (): boolean => {
+    if (step === 1) return data.storeName.trim().length > 0;
+    if (step === 4 && !currentUser)
+      return !!(data.adminInfo?.displayName && data.adminInfo?.email && data.adminInfo?.password);
+    return true;
+  };
+
+  const handleLogoFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    if (logoPreview) URL.revokeObjectURL(logoPreview);
+    const url = URL.createObjectURL(file);
+    setLogoPreview(url);
+    setData(prev => ({ ...prev, logoFile: file }));
   };
 
   const handleAddEmployee = () => {
     if (newEmployee.email && newEmployee.displayName) {
-      setData(prev => ({
-        ...prev,
-        employees: [...prev.employees, { ...newEmployee }]
-      }));
+      setData(prev => ({ ...prev, employees: [...prev.employees, { ...newEmployee }] }));
       setNewEmployee({ email: '', role: 'employee', displayName: '' });
     }
   };
 
-  const removeEmployee = (index: number) => {
-    setData(prev => ({
-      ...prev,
-      employees: prev.employees.filter((_, i) => i !== index)
-    }));
+  const removeEmployee = (idx: number) => {
+    setData(prev => ({ ...prev, employees: prev.employees.filter((_, i) => i !== idx) }));
   };
 
-  const currentStep = STEPS[currentStepIndex];
+  const firstName = (currentUser?.displayName || data.adminInfo?.displayName || '').split(' ')[0];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8 font-sans">
-      <div className="w-full max-w-4xl relative">
-        {/* Progress Bar */}
-        <div className="mb-8 px-4 flex items-center justify-between gap-2">
-          {STEPS.map((step, idx) => (
-            <React.Fragment key={step.id}>
-              <div 
-                className={`flex flex-col items-center gap-2 group transition-all duration-300 ${
-                  idx <= currentStepIndex ? 'text-indigo-600' : 'text-slate-400'
-                }`}
-              >
-                <div 
-                  className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
-                    idx < currentStepIndex ? 'bg-indigo-600 border-indigo-600 text-white' :
-                    idx === currentStepIndex ? 'border-indigo-600 bg-white shadow-lg shadow-indigo-100 ring-4 ring-indigo-50' :
-                    'border-slate-200'
-                  }`}
-                >
-                  {idx < currentStepIndex ? <CheckCircle2 size={18} /> : step.icon}
-                </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider hidden md:block">
-                  {step.title}
-                </span>
-              </div>
-              {idx < STEPS.length - 1 && (
-                <div className="flex-1 h-0.5 bg-slate-200 relative overflow-hidden">
-                  <motion.div 
-                    initial={false}
-                    animate={{ width: idx < currentStepIndex ? '100%' : '0%' }}
-                    className="absolute inset-0 bg-indigo-600"
-                  />
+    <div className="min-h-screen flex flex-col bg-white font-sans">
+      {/* Top bar */}
+      <AnimatePresence>
+        {step > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="flex items-center justify-between px-6 py-5 flex-shrink-0"
+          >
+            <button
+              onClick={() => go(-1)}
+              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-800 transition-colors text-sm font-medium"
+            >
+              <ArrowLeft size={16} /> Atrás
+            </button>
+            <span className="text-xs font-semibold text-slate-300 tabular-nums">
+              {step} / {TOTAL_STEPS - 1}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Content */}
+      <div className="flex-1 flex items-center justify-center px-6 py-8">
+        <div className="w-full max-w-sm">
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div
+              key={step}
+              custom={direction}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={slideTransition}
+            >
+              {/* ── Step 0: Welcome ── */}
+              {step === 0 && (
+                <div className="space-y-10 text-center">
+                  <div className="space-y-5">
+                    <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 rounded-full px-4 py-1.5 text-sm font-semibold">
+                      <Sparkles size={14} /> StockMaster Pro
+                    </div>
+                    <h1 className="text-4xl font-extrabold text-slate-900 leading-tight tracking-tight">
+                      Tu tienda inteligente<br />te espera 🚀
+                    </h1>
+                    <p className="text-slate-500 text-base leading-relaxed">
+                      Configúrala en minutos. La IA hace el resto.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { icon: '📦', label: 'Inventario inteligente' },
+                      { icon: '📊', label: 'Análisis de ventas' },
+                      { icon: '🤖', label: 'IA incluida' },
+                    ].map(f => (
+                      <div key={f.label} className="p-4 bg-slate-50 rounded-2xl">
+                        <div className="text-2xl mb-1.5">{f.icon}</div>
+                        <p className="text-[10px] text-slate-500 font-semibold leading-tight">{f.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    onClick={() => go(1)}
+                    size="lg"
+                    className="w-full h-14 rounded-2xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100"
+                  >
+                    Comenzar <ArrowRight size={18} className="ml-2" />
+                  </Button>
                 </div>
               )}
-            </React.Fragment>
-          ))}
-        </div>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentStep.id}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-            className="w-full"
-          >
-            <Card className="shadow-2xl border-none overflow-hidden bg-white rounded-3xl">
-              <div className="grid md:grid-cols-12 min-h-[500px]">
-                {/* Left Side: Illustration / Context */}
-                <div className="md:col-span-4 bg-indigo-600 p-8 text-white flex flex-col justify-between relative overflow-hidden">
-                  <div className="relative z-10">
-                    <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-6">
-                      {currentStep.icon}
-                    </div>
-                    <h2 className="text-2xl font-bold mb-2">Paso {currentStepIndex + 1} de {STEPS.length}</h2>
-                    <p className="text-indigo-100 text-sm leading-relaxed">
-                      {currentStepIndex === 0 && "Inicia tu viaje hacia una gestión inteligente de inventario."}
-                      {currentStepIndex === 1 && "Danos el nombre de tu imperio y ayúdanos a categorizarlo."}
-                      {currentStepIndex === 2 && "Personaliza cómo se siente tu plataforma para ti y tu equipo."}
-                      {currentStepIndex === 3 && "Asegura el acceso principal a la administración de tu negocio."}
-                      {currentStepIndex === 4 && "Agrega a las personas que harán crecer este proyecto contigo."}
-                      {currentStepIndex === 5 && "Explícale a la IA cómo funciona tu negocio para obtener mejores resultados."}
-                      {currentStepIndex === 6 && "Todo listo. Verifica los detalles antes de lanzar tu tienda."}
+              {/* ── Step 1: Store name ── */}
+              {step === 1 && (
+                <div className="space-y-8">
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Tu negocio</p>
+                    <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                      ¿Cómo se llama<br />tu empresa?
+                    </h2>
+                    <p className="text-slate-400 text-sm">Este será el nombre visible de tu tienda.</p>
+                  </div>
+                  <Input
+                    autoFocus
+                    placeholder="Ej: TechStore, La Bodega, MiTienda…"
+                    className="h-14 text-lg rounded-2xl border-slate-200 focus:border-indigo-500 px-5 transition-all"
+                    value={data.storeName}
+                    onChange={e => setData(prev => ({ ...prev, storeName: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && canContinue() && go(1)}
+                  />
+                  <Button
+                    onClick={() => go(1)}
+                    disabled={!canContinue()}
+                    size="lg"
+                    className="w-full h-14 rounded-2xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 shadow-lg shadow-indigo-50"
+                  >
+                    Continuar <ArrowRight size={18} className="ml-2" />
+                  </Button>
+                </div>
+              )}
+
+              {/* ── Step 2: Business type ── */}
+              {step === 2 && (
+                <div className="space-y-8">
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Categoría</p>
+                    <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                      ¿A qué se dedica{' '}
+                      <span className="text-indigo-600">{data.storeName || 'tu empresa'}</span>?
+                    </h2>
+                    <p className="text-slate-400 text-sm">La IA usará esto para personalizar tu experiencia.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {CATEGORIES.map(cat => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setData(prev => ({ ...prev, businessType: cat.id }))}
+                        className={`p-4 rounded-2xl border-2 transition-all flex items-center gap-3 text-left group ${
+                          data.businessType === cat.id
+                            ? 'border-indigo-500 bg-indigo-50'
+                            : 'border-slate-100 hover:border-indigo-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="text-2xl group-hover:scale-110 transition-transform">{cat.icon}</span>
+                        <span className="text-sm font-semibold text-slate-700">{cat.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    onClick={() => go(1)}
+                    size="lg"
+                    className="w-full h-14 rounded-2xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-50"
+                  >
+                    Continuar <ArrowRight size={18} className="ml-2" />
+                  </Button>
+                </div>
+              )}
+
+              {/* ── Step 3: Branding (logo + colors) ── */}
+              {step === 3 && (
+                <div className="space-y-7">
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Identidad visual</p>
+                    <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                      Dale vida a<br />tu marca
+                    </h2>
+                    <p className="text-slate-400 text-sm">
+                      Sube tu logo y elige tus colores.{' '}
+                      <span className="text-indigo-500 font-medium">Opcional.</span>
                     </p>
                   </div>
 
-                  {/* Decorative Elements */}
-                  <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
-                  <div className="absolute top-1/2 -right-24 w-64 h-64 bg-indigo-400/20 rounded-full blur-3xl" />
-                  
-                  <div className="relative z-10 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5" />
-                    </div>
-                    <div className="text-xs">
-                      <p className="font-bold">Fact de hoy</p>
-                      <p className="text-indigo-200">La IA reduce errores de stock en un 40%.</p>
+                  {/* Logo upload */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Logo</p>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoFile(f); }}
+                    />
+                    <div
+                      onClick={() => logoInputRef.current?.click()}
+                      onDragOver={e => { e.preventDefault(); setIsDraggingLogo(true); }}
+                      onDragLeave={() => setIsDraggingLogo(false)}
+                      onDrop={e => {
+                        e.preventDefault();
+                        setIsDraggingLogo(false);
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) handleLogoFile(f);
+                      }}
+                      className={`relative flex flex-col items-center justify-center gap-3 h-28 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
+                        isDraggingLogo
+                          ? 'border-indigo-400 bg-indigo-50'
+                          : logoPreview
+                          ? 'border-indigo-300 bg-indigo-50/50'
+                          : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {logoPreview ? (
+                        <>
+                          <img src={logoPreview} alt="Logo preview" className="h-16 w-auto max-w-[60%] object-contain rounded-xl" />
+                          <p className="text-[10px] text-slate-400 font-medium absolute bottom-2">Haz clic para cambiar</p>
+                        </>
+                      ) : (
+                        <>
+                          <ImagePlus size={22} className="text-slate-300" />
+                          <div className="text-center">
+                            <p className="text-sm font-semibold text-slate-500">Sube tu logo</p>
+                            <p className="text-[10px] text-slate-400">PNG, JPG, SVG · Arrastra o haz clic</p>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
-                </div>
 
-                {/* Right Side: Form */}
-                <div className="md:col-span-8 p-8 md:p-12 flex flex-col">
-                  <div className="flex-1">
-                    {currentStepIndex === 0 && (
-                      <div className="space-y-8 py-4">
-                        <div className="space-y-4">
-                          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 leading-tight">
-                            Vamos a crear tu tienda <span className="text-indigo-600 italic">Pro</span> 🚀
-                          </h1>
-                          <p className="text-slate-500 text-lg">
-                            Configura tu negocio en pocos pasos y empieza a vender inteligentemente hoy mismo.
-                          </p>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-start gap-4">
-                            <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600">
-                              <Layout size={20} />
-                            </div>
-                            <div>
-                              <p className="font-bold text-sm">Dashboard Personalizado</p>
-                              <p className="text-xs text-slate-500">Colores y branding únicos para tu marca.</p>
-                            </div>
-                          </div>
-                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-start gap-4">
-                            <div className="bg-emerald-100 p-2 rounded-xl text-emerald-600">
-                              <BrainCircuit size={20} />
-                            </div>
-                            <div>
-                              <p className="font-bold text-sm">Cerebro IA</p>
-                              <p className="text-xs text-slate-500">Sugerencias inteligentes basadas en tu contexto.</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                  {/* Color presets */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Color principal</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {COLOR_PRESETS.map(preset => {
+                        const isSelected = data.branding.primaryColor === preset.primaryColor;
+                        return (
+                          <button
+                            key={preset.name}
+                            onClick={() => setData(prev => ({ ...prev, branding: preset }))}
+                            className={`flex items-center gap-2.5 p-2.5 rounded-xl border-2 transition-all ${
+                              isSelected ? 'border-slate-400 bg-slate-50' : 'border-slate-100 hover:border-slate-300'
+                            }`}
+                          >
+                            <div
+                              className="w-6 h-6 rounded-lg flex-shrink-0 shadow-sm"
+                              style={{ backgroundColor: preset.primaryColor }}
+                            />
+                            <span className="text-xs font-semibold text-slate-600 truncate">{preset.name}</span>
+                            {isSelected && <CheckCircle2 size={13} className="text-slate-500 ml-auto flex-shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                    {currentStepIndex === 1 && (
-                      <div className="space-y-6">
-                        <div className="space-y-2">
-                          <Label className="text-base">Nombre de la Tienda</Label>
-                          <Input 
-                            placeholder="Ej: TechStore Solutions" 
-                            className="h-12 text-lg rounded-xl border-slate-200 focus:border-indigo-600 transition-all"
-                            value={data.storeName}
-                            onChange={e => setData(prev => ({ ...prev, storeName: e.target.value }))}
+                    {/* Custom color picker */}
+                    <div className="mt-3 flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <label className="flex items-center gap-2 cursor-pointer flex-1">
+                        <div
+                          className="w-7 h-7 rounded-lg border-2 border-white shadow-md flex-shrink-0 overflow-hidden"
+                          style={{ backgroundColor: data.branding.primaryColor }}
+                        >
+                          <input
+                            type="color"
+                            value={data.branding.primaryColor}
+                            onChange={e => setData(prev => ({
+                              ...prev,
+                              branding: { ...prev.branding, primaryColor: e.target.value, secondaryColor: e.target.value }
+                            }))}
+                            className="opacity-0 w-full h-full cursor-pointer"
                           />
                         </div>
-                        
-                        <div className="space-y-3">
-                          <Label className="text-base">¿A qué se dedica tu empresa?</Label>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            {CATEGORIES.map(cat => (
-                              <button
-                                key={cat.id}
-                                onClick={() => setData(prev => ({ ...prev, businessType: cat.id }))}
-                                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group ${
-                                  data.businessType === cat.id 
-                                  ? 'border-indigo-600 bg-indigo-50/50' 
-                                  : 'border-slate-100 bg-white hover:border-indigo-200 hover:bg-slate-50'
-                                }`}
-                              >
-                                <span className="text-2xl group-hover:scale-110 transition-transform">{cat.icon}</span>
-                                <span className="text-xs font-bold text-slate-700">{cat.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                        <span className="text-xs font-medium text-slate-500">Color personalizado</span>
+                      </label>
+                      <span className="text-xs font-mono text-slate-400">{data.branding.primaryColor}</span>
+                    </div>
+                  </div>
 
-                        {data.storeName && (
-                          <div className="p-4 bg-indigo-50/30 rounded-2xl border border-indigo-100 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <StoreIcon size={20} className="text-indigo-600" />
-                              <p className="text-sm font-medium">Así se verá: <span className="font-bold text-indigo-700">{data.storeName}</span></p>
-                            </div>
-                          </div>
-                        )}
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => go(1)}
+                      className="flex-1 h-12 rounded-xl border-2 text-slate-500 hover:text-slate-800"
+                    >
+                      Saltar
+                    </Button>
+                    <Button
+                      onClick={() => go(1)}
+                      className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      Continuar <ArrowRight size={16} className="ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Step 4: Admin ── */}
+              {step === 4 && (
+                <div className="space-y-8">
+                  {currentUser ? (
+                    <>
+                      <div className="space-y-3 text-center">
+                        <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Administrador</p>
+                        <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                          Tú serás el<br />administrador 👑
+                        </h2>
+                        <p className="text-slate-400 text-sm">
+                          De <span className="font-semibold text-slate-700">{data.storeName || 'tu tienda'}</span>.
+                        </p>
                       </div>
-                    )}
-
-                    {currentStepIndex === 2 && (
-                      <div className="space-y-6">
-                        <div className="space-y-4">
-                          <Label className="text-base">Elige un estilo para tu tienda</Label>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {COLOR_PRESETS.map(preset => (
-                              <button
-                                key={preset.name}
-                                onClick={() => setData(prev => ({ ...prev, branding: preset }))}
-                                className={`p-4 rounded-2xl border-2 text-left transition-all relative overflow-hidden group ${
-                                  data.branding.name === preset.name 
-                                  ? 'border-indigo-600 ring-4 ring-indigo-50' 
-                                  : 'border-slate-100 bg-white hover:border-indigo-200'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-3">
-                                  <span className="font-bold text-sm">{preset.name}</span>
-                                  {data.branding.name === preset.name && <CheckCircle2 size={16} className="text-indigo-600" />}
-                                </div>
-                                <div className="flex gap-2 h-8">
-                                  <div className="w-8 h-8 rounded-lg shadow-inner" style={{ backgroundColor: preset.primaryColor }} />
-                                  <div className="w-8 h-8 rounded-lg shadow-inner" style={{ backgroundColor: preset.secondaryColor }} />
-                                  <div className="w-8 h-8 rounded-lg shadow-inner border border-slate-200" style={{ backgroundColor: preset.backgroundColor }} />
-                                </div>
-                              </button>
-                            ))}
-                          </div>
+                      <div className="flex flex-col items-center gap-4 py-2">
+                        <div className="w-20 h-20 rounded-full border-4 border-indigo-100 overflow-hidden">
+                          <img
+                            src={
+                              currentUser.photoURL ||
+                              `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.displayName || 'A')}&background=4f46e5&color=fff`
+                            }
+                            className="w-full h-full object-cover"
+                            alt="Avatar"
+                          />
                         </div>
-
-                        <div className="mt-8 space-y-4">
-                          <Label>Vista previa de tu Dashboard</Label>
-                          <div 
-                            className="w-full h-40 rounded-3xl border-2 border-slate-200 shadow-sm p-4 flex flex-col gap-3 transition-all duration-500 overflow-hidden"
-                            style={{ backgroundColor: data.branding.backgroundColor }}
-                          >
-                            <header className="flex items-center justify-between bg-white/80 backdrop-blur-sm p-2 rounded-xl border border-slate-100">
-                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-lg" style={{ backgroundColor: data.branding.primaryColor }} />
-                                <span className={(data.branding as any).isDark ? "text-white text-[10px] font-bold" : "text-slate-900 text-[10px] font-bold"}>
-                                  {data.storeName || "Tu Tienda"}
-                                </span>
-                              </div>
-                              <div className="w-12 h-2 rounded-full bg-slate-200" />
-                            </header>
-                            <div className="grid grid-cols-3 gap-2 flex-1">
-                              <div className="bg-white/90 rounded-xl p-2 flex flex-col justify-end gap-1">
-                                <div className="w-full h-1 rounded bg-slate-100" />
-                                <div className="w-2/3 h-2 rounded-lg" style={{ backgroundColor: data.branding.secondaryColor }} />
-                              </div>
-                              <div className="bg-white/90 rounded-xl p-2 flex flex-col justify-end gap-1">
-                                <div className="w-full h-1 rounded bg-slate-100" />
-                                <div className="w-2/3 h-2 rounded-lg" style={{ backgroundColor: data.branding.primaryColor }} />
-                              </div>
-                              <div className="bg-white/90 rounded-xl p-2 flex flex-col justify-end gap-1">
-                                <div className="w-full h-1 rounded bg-slate-100" />
-                                <div className="w-2/3 h-2 rounded-lg" style={{ backgroundColor: data.branding.primaryColor }} />
-                              </div>
-                            </div>
-                          </div>
+                        <div className="text-center">
+                          <p className="font-bold text-lg text-slate-900">{currentUser.displayName}</p>
+                          <p className="text-slate-400 text-sm">{currentUser.email}</p>
+                        </div>
+                        <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 rounded-full px-4 py-1.5 text-sm font-semibold">
+                          <CheckCircle2 size={14} /> Cuenta verificada
                         </div>
                       </div>
-                    )}
+                      <Button
+                        onClick={() => go(1)}
+                        size="lg"
+                        className="w-full h-14 rounded-2xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-50"
+                      >
+                        Perfecto, continuar <ArrowRight size={18} className="ml-2" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-3">
+                        <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Tu cuenta</p>
+                        <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                          Crea tu cuenta de<br />administrador
+                        </h2>
+                      </div>
+                      <div className="space-y-3">
+                        <Input
+                          placeholder="Tu nombre completo"
+                          className="h-12 rounded-xl"
+                          value={data.adminInfo?.displayName || ''}
+                          onChange={e =>
+                            setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, displayName: e.target.value } }))
+                          }
+                        />
+                        <Input
+                          type="email"
+                          placeholder="correo@empresa.com"
+                          className="h-12 rounded-xl"
+                          value={data.adminInfo?.email || ''}
+                          onChange={e =>
+                            setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, email: e.target.value } }))
+                          }
+                        />
+                        <Input
+                          type="password"
+                          placeholder="Contraseña"
+                          className="h-12 rounded-xl"
+                          value={data.adminInfo?.password || ''}
+                          onChange={e =>
+                            setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, password: e.target.value } }))
+                          }
+                        />
+                      </div>
+                      <div className="relative flex items-center gap-3">
+                        <div className="flex-1 h-px bg-slate-100" />
+                        <span className="text-xs text-slate-400 font-medium">o</span>
+                        <div className="flex-1 h-px bg-slate-100" />
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={onGoogleSignIn}
+                        className="w-full h-12 rounded-xl gap-3 border-2"
+                      >
+                        <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="" />
+                        Continuar con Google
+                      </Button>
+                      <Button
+                        onClick={() => go(1)}
+                        disabled={!canContinue()}
+                        size="lg"
+                        className="w-full h-14 rounded-2xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40"
+                      >
+                        Continuar <ArrowRight size={18} className="ml-2" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
 
-                    {currentStepIndex === 3 && (
-                      <div className="space-y-6">
-                        {!currentUser ? (
-                          <div className="space-y-6">
-                            <div className="grid gap-4">
-                              <div className="space-y-2">
-                                <Label>Nombre Completo</Label>
-                                <Input 
-                                  placeholder="Tu nombre" 
-                                  value={data.adminInfo?.displayName || ''}
-                                  onChange={e => setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, displayName: e.target.value } }))}
-                                  required
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Email</Label>
-                                <Input 
-                                  type="email" 
-                                  placeholder="admin@ejemplo.com" 
-                                  value={data.adminInfo?.email || ''}
-                                  onChange={e => setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, email: e.target.value } }))}
-                                  required
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Contraseña</Label>
-                                <Input 
-                                  type="password" 
-                                  placeholder="••••••••" 
-                                  value={data.adminInfo?.password || ''}
-                                  onChange={e => setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, password: e.target.value } }))}
-                                  required
-                                />
-                                <div className="flex gap-1 h-1 mt-1">
-                                  {[1,2,3,4].map(i => (
-                                    <div 
-                                      key={i} 
-                                      className={`flex-1 rounded-full ${
-                                        (data.adminInfo?.password?.length || 0) > i * 2 ? 'bg-emerald-500' : 'bg-slate-200'
-                                      }`}
-                                    />
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="relative">
-                              <Separator className="my-8" />
-                              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-xs text-slate-400 font-bold uppercase tracking-widest">O continúa con</span>
-                            </div>
+              {/* ── Step 5: AI description (optional) ── */}
+              {step === 5 && (
+                <div className="space-y-8">
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Contexto IA</p>
+                    <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                      Cuéntanos sobre<br />tu negocio
+                    </h2>
+                    <p className="text-slate-400 text-sm">
+                      La IA usará esto para recomendaciones personalizadas.{' '}
+                      <span className="text-indigo-500 font-medium">Opcional.</span>
+                    </p>
+                  </div>
+                  <Textarea
+                    autoFocus
+                    rows={5}
+                    placeholder="Ej: Vendemos ropa deportiva para mujeres, tenemos bodega propia y vendemos principalmente en Instagram…"
+                    className="rounded-2xl border-slate-200 p-4 text-sm leading-relaxed resize-none focus:border-indigo-500 transition-all"
+                    value={data.aiDescription}
+                    onChange={e => setData(prev => ({ ...prev, aiDescription: e.target.value }))}
+                  />
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => go(1)}
+                      className="flex-1 h-12 rounded-xl border-2 text-slate-500 hover:text-slate-800"
+                    >
+                      Saltar
+                    </Button>
+                    <Button
+                      onClick={() => go(1)}
+                      className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      Continuar <ArrowRight size={16} className="ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
 
-                            <Button 
-                              variant="outline" 
-                              onClick={onGoogleSignIn}
-                              className="w-full h-12 gap-3 border-2 hover:bg-slate-50 rounded-xl"
+              {/* ── Step 6: Employees (optional) ── */}
+              {step === 6 && (
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Tu equipo</p>
+                    <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                      ¿Quieres agregar<br />empleados?
+                    </h2>
+                    <p className="text-slate-400 text-sm">
+                      Puedes hacerlo desde ajustes más tarde.{' '}
+                      <span className="text-indigo-500 font-medium">Opcional.</span>
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="Nombre del empleado"
+                      className="h-11 rounded-xl"
+                      value={newEmployee.displayName}
+                      onChange={e => setNewEmployee(prev => ({ ...prev, displayName: e.target.value }))}
+                    />
+                    <div className="flex gap-2">
+                      <Input
+                        type="email"
+                        placeholder="correo@equipo.com"
+                        className="h-11 rounded-xl flex-1"
+                        value={newEmployee.email}
+                        onChange={e => setNewEmployee(prev => ({ ...prev, email: e.target.value }))}
+                      />
+                      <Select
+                        value={newEmployee.role}
+                        onValueChange={(v: any) => setNewEmployee(prev => ({ ...prev, role: v }))}
+                      >
+                        <SelectTrigger className="h-11 w-24 rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="employee">Empleado</SelectItem>
+                          <SelectItem value="viewer">Ver</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        className="h-11 w-11 p-0 rounded-xl flex-shrink-0"
+                        onClick={handleAddEmployee}
+                      >
+                        <Plus size={18} />
+                      </Button>
+                    </div>
+                  </div>
+                  {data.employees.length > 0 && (
+                    <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                      {data.employees.map((emp, idx) => (
+                        <motion.div
+                          key={idx}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="flex items-center justify-between p-3 bg-slate-50 rounded-xl"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
+                              {emp.displayName[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold leading-none">{emp.displayName}</p>
+                              <p className="text-xs text-slate-400 mt-0.5">{emp.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-[10px] capitalize">{emp.role}</Badge>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-rose-400 hover:text-rose-600"
+                              onClick={() => removeEmployee(idx)}
                             >
-                              <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-                              Registrarme con Google
+                              <Trash2 size={13} />
                             </Button>
                           </div>
-                        ) : (
-                          <div className="space-y-8 py-10 text-center">
-                            <div className="mx-auto w-24 h-24 rounded-full border-4 border-emerald-500 p-1">
-                              <img src={currentUser.photoURL || `https://ui-avatars.com/api/?name=${currentUser.displayName}`} className="w-full h-full rounded-full" alt="Avatar" />
-                            </div>
-                            <div className="space-y-1">
-                              <h3 className="text-2xl font-bold">{currentUser.displayName}</h3>
-                              <p className="text-slate-500">{currentUser.email}</p>
-                            </div>
-                            <div className="p-4 bg-emerald-50 rounded-2xl flex items-center justify-center gap-3 text-emerald-700">
-                              <CheckCircle2 size={24} />
-                              <span className="font-bold">Ya estás autenticado</span>
-                            </div>
-                            <Button variant="ghost" onClick={prevStep} className="text-slate-400">Usar otra cuenta</Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {currentStepIndex === 4 && (
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-base">Miembros del equipo</Label>
-                          <Badge variant="outline" className="bg-indigo-50 text-indigo-600 border-indigo-100">Opcional</Badge>
-                        </div>
-
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
-                            <div className="md:col-span-12">
-                              <Input 
-                                placeholder="Nombre del empleado" 
-                                value={newEmployee.displayName}
-                                onChange={e => setNewEmployee(prev => ({ ...prev, displayName: e.target.value }))}
-                              />
-                            </div>
-                            <div className="md:col-span-8">
-                              <Input 
-                                type="email" 
-                                placeholder="email@equipo.com" 
-                                value={newEmployee.email}
-                                onChange={e => setNewEmployee(prev => ({ ...prev, email: e.target.value }))}
-                              />
-                            </div>
-                            <div className="md:col-span-3">
-                              <Select 
-                                value={newEmployee.role} 
-                                onValueChange={(v: any) => setNewEmployee(prev => ({ ...prev, role: v }))}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="admin">Admin</SelectItem>
-                                  <SelectItem value="employee">Empleado</SelectItem>
-                                  <SelectItem value="viewer">Ver</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="md:col-span-1">
-                              <Button variant="outline" className="w-full h-full p-0" onClick={handleAddEmployee} type="button">
-                                <Plus size={20} />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
-                          {data.employees.length === 0 && (
-                            <div className="text-center py-8 border-2 border-dashed border-slate-100 rounded-2xl">
-                              <Users className="mx-auto w-10 h-10 text-slate-200 mb-2" />
-                              <p className="text-xs text-slate-400">No hay empleados agregados aún</p>
-                            </div>
-                          )}
-                          {data.employees.map((emp, idx) => (
-                            <motion.div 
-                              layout
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              className="flex items-center justify-between p-3 bg-slate-50 rounded-xl"
-                              key={idx}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center font-bold text-xs text-indigo-600">
-                                  {emp.displayName[0].toUpperCase()}
-                                </div>
-                                <div className="text-xs">
-                                  <p className="font-bold">{emp.displayName}</p>
-                                  <p className="text-slate-400">{emp.email}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <Badge variant="secondary" className="capitalize text-[10px]">{emp.role}</Badge>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500" onClick={() => removeEmployee(idx)}>
-                                  <Trash2 size={14} />
-                                </Button>
-                              </div>
-                            </motion.div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {currentStepIndex === 5 && (
-                      <div className="space-y-6">
-                        <div className="space-y-4">
-                          <Label className="text-base flex items-center gap-2">
-                            Describe tu negocio para la IA <Sparkles size={16} className="text-indigo-600" />
-                          </Label>
-                          <p className="text-sm text-slate-500">
-                            Esto ayuda a nuestro sistema a darte mejores insights sobre inventario, ventas y tendencias.
-                          </p>
-                          <Textarea 
-                            rows={6}
-                            placeholder="Ej: Vendemos productos tecnológicos y queremos ayuda con inventario y ventas. Mi bodega se especializa en componentes de PC de alta gama..."
-                            className="rounded-2xl border-slate-200 p-4 leading-relaxed focus:ring-4 ring-indigo-50 transition-all h-40"
-                            value={data.aiDescription}
-                            onChange={e => setData(prev => ({ ...prev, aiDescription: e.target.value }))}
-                          />
-                        </div>
-
-                        <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex items-start gap-4">
-                          <BrainCircuit size={20} className="mt-1 text-amber-600" />
-                          <div className="space-y-1">
-                            <p className="font-bold text-sm text-amber-900">¿Por qué es importante?</p>
-                            <p className="text-xs text-amber-700 leading-relaxed">
-                              La IA usará esta información para personalizar las notificaciones de stock bajo y sugerir temporadas de venta basadas en tu sector.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {currentStepIndex === 6 && (
-                      <div className="space-y-6">
-                        <h3 className="text-xl font-bold">Resumen de tu tienda</h3>
-                        <div className="grid gap-4">
-                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                            <div className="flex items-center gap-4 mb-4">
-                              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white" style={{ backgroundColor: data.branding.primaryColor }}>
-                                <StoreIcon />
-                              </div>
-                              <div>
-                                <p className="font-bold text-lg">{data.storeName}</p>
-                                <p className="text-xs text-slate-500 uppercase tracking-widest">{CATEGORIES.find(c => c.id === data.businessType)?.label}</p>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1">
-                                <Label className="text-[10px] uppercase text-slate-400">Admin</Label>
-                                <p className="text-sm font-medium">{data.adminInfo?.displayName}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-[10px] uppercase text-slate-400">Equipo</Label>
-                                <p className="text-sm font-medium">{data.employees.length} miembros</p>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="space-y-2">
-                            <Label className="text-[10px] uppercase text-slate-400">Estilo Visual</Label>
-                            <div className="flex gap-2">
-                              <div className="flex-1 h-3 rounded-full" style={{ backgroundColor: data.branding.primaryColor }} />
-                              <div className="flex-1 h-3 rounded-full" style={{ backgroundColor: data.branding.secondaryColor }} />
-                              <div className="flex-1 h-3 rounded-full ring-1 ring-slate-100" style={{ backgroundColor: data.branding.backgroundColor }} />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="p-6 bg-indigo-600 rounded-3xl text-white text-center space-y-4 shadow-xl shadow-indigo-200">
-                          <CheckCircle2 size={32} className="mx-auto" />
-                          <div className="space-y-1">
-                            <h4 className="text-lg font-bold">¡Todo listo para despegar!</h4>
-                            <p className="text-indigo-100 text-xs">Al crear tu tienda, aceptamos el reto de hacer crecer tu inventario.</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Navigation Buttons */}
-                  <div className="mt-12 flex items-center justify-between gap-4">
-                    <Button 
-                      variant="ghost" 
-                      onClick={prevStep} 
-                      disabled={currentStepIndex === 0}
-                      className="h-12 px-6 rounded-xl text-slate-500 hover:text-slate-900"
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => go(1)}
+                      className="flex-1 h-12 rounded-xl border-2 text-slate-500 hover:text-slate-800"
                     >
-                      <ArrowLeft size={18} className="mr-2" /> Atrás
+                      Saltar
                     </Button>
-                    
-                    {currentStepIndex === STEPS.length - 1 ? (
-                      <Button 
-                        onClick={() => onComplete(data)}
-                        className="h-12 px-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-100 group overflow-hidden relative"
-                      >
-                        <span className="relative z-10 flex items-center gap-2">
-                          Crear mi tienda <Sparkles size={18} />
-                        </span>
-                        <motion.div 
-                          className="absolute inset-0 bg-white/10"
-                          initial={{ x: '-100%' }}
-                          animate={{ x: '100%' }}
-                          transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
-                        />
-                      </Button>
-                    ) : (
-                      <Button 
-                        onClick={nextStep}
-                        className="h-12 px-8 rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-xl shadow-slate-100"
-                        disabled={
-                          (currentStepIndex === 1 && !data.storeName) ||
-                          (currentStepIndex === 3 && !currentUser && (!data.adminInfo?.email || !data.adminInfo?.password || !data.adminInfo?.displayName))
-                        }
-                      >
-                        Siguiente <ArrowRight size={18} className="ml-2" />
-                      </Button>
-                    )}
+                    <Button
+                      onClick={() => go(1)}
+                      className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      Continuar <ArrowRight size={16} className="ml-1" />
+                    </Button>
                   </div>
                 </div>
-              </div>
-            </Card>
-          </motion.div>
-        </AnimatePresence>
+              )}
 
-        <div className="text-center mt-8 space-y-6">
-          <p className="text-xs text-slate-400 font-medium">StockMaster Pro v2.0 - Onboarding Seguro & Privado</p>
-          <div className="flex justify-center gap-4">
-            <div className="w-2 h-2 rounded-full bg-slate-200" />
-            <div className="w-2 h-2 rounded-full bg-slate-200" />
-            <div className="w-2 h-2 rounded-full bg-slate-200" />
-          </div>
+              {/* ── Step 7: Launch ── */}
+              {step === 7 && (
+                <div className="space-y-8 text-center">
+                  <div className="space-y-4">
+                    <motion.div
+                      initial={{ scale: 0.4, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: 'spring', stiffness: 180, damping: 14, delay: 0.05 }}
+                      className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto shadow-2xl shadow-indigo-200 overflow-hidden"
+                      style={{ backgroundColor: data.branding.primaryColor }}
+                    >
+                      {logoPreview ? (
+                        <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
+                      ) : (
+                        <CheckCircle2 className="text-white" size={38} />
+                      )}
+                    </motion.div>
+                    <div className="space-y-2 pt-1">
+                      <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                        ¡Todo listo{firstName ? `, ${firstName}` : ''}! 🎉
+                      </h2>
+                      <p className="text-slate-500 text-sm">
+                        Tu tienda <span className="font-semibold text-slate-800">{data.storeName}</span> está lista para despegar.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 rounded-2xl p-5 text-left space-y-3.5">
+                    {[
+                      { label: 'Tienda', value: data.storeName },
+                      { label: 'Categoría', value: CATEGORIES.find(c => c.id === data.businessType)?.label },
+                      { label: 'Color', value: (
+                        <span className="flex items-center gap-2 justify-end">
+                          <span className="w-4 h-4 rounded-full inline-block" style={{ backgroundColor: data.branding.primaryColor }} />
+                          <span>{data.branding.primaryColor}</span>
+                        </span>
+                      )},
+                      { label: 'Logo', value: logoPreview ? '✓ Subido' : 'Sin logo' },
+                      { label: 'Equipo', value: `${data.employees.length} miembro${data.employees.length !== 1 ? 's' : ''}` },
+                    ].map(row => (
+                      <div key={row.label} className="flex justify-between items-center">
+                        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wide">{row.label}</span>
+                        <span className="text-sm font-bold text-slate-800">{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    onClick={() => onComplete(data)}
+                    size="lg"
+                    className="w-full h-14 rounded-2xl text-base font-semibold shadow-xl shadow-indigo-100 relative overflow-hidden text-white"
+                    style={{ backgroundColor: data.branding.primaryColor }}
+                  >
+                    <span className="relative z-10 flex items-center gap-2">
+                      Crear mi tienda <Sparkles size={18} />
+                    </span>
+                    <motion.div
+                      className="absolute inset-0 bg-white/10"
+                      initial={{ x: '-100%' }}
+                      animate={{ x: '100%' }}
+                      transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
+                    />
+                  </Button>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
+
+      {/* Bottom step dots */}
+      <AnimatePresence>
+        {step > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex justify-center gap-1.5 pb-8 flex-shrink-0"
+          >
+            {Array.from({ length: TOTAL_STEPS - 1 }).map((_, i) => (
+              <motion.div
+                key={i}
+                animate={{
+                  width: i + 1 === step ? 24 : 8,
+                  backgroundColor: i + 1 === step ? '#6366f1' : '#e2e8f0',
+                }}
+                className="h-2 rounded-full"
+                transition={{ duration: 0.25 }}
+              />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -43,6 +43,8 @@ import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard"
 import { NavItem } from "./components/NavItem";
 import { generateDemoData } from "./lib/demoData";
 import { generateProductCode } from "./lib/formatters";
+import { checkIsSuperAdmin } from "./lib/superAdminService";
+import { SuperAdminPage } from "./pages/SuperAdminPage";
 
 // Pages
 import { DashboardPage } from "./pages/DashboardPage";
@@ -88,6 +90,8 @@ export default function App() {
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -259,6 +263,12 @@ export default function App() {
       setUser(currentUser);
       setIsAuthReady(true);
       if (currentUser) {
+        const superAdmin = await checkIsSuperAdmin(currentUser.email || '');
+        if (superAdmin) {
+          setIsSuperAdmin(true);
+          setIsStoreLoading(false);
+          return;
+        }
         try {
           const q = query(collection(db, "users", currentUser.uid, "userStores"));
           const qSnapshot = await getDocs(q);
@@ -280,6 +290,7 @@ export default function App() {
         setCurrentStore(null);
         setUserStores([]);
         setMemberRole(null);
+        setIsSuperAdmin(false);
       }
     });
     return () => unsubscribe();
@@ -404,6 +415,14 @@ export default function App() {
         await setDoc(doc(db, "stores", storeId, "members", emp.email.replace(/\./g, "_")), { ...emp, storeId, userId: "", joinedAt: new Date().toISOString() });
       }
       await setDoc(doc(db, "users", activeUser.uid, "userStores", storeId), { role: "admin" });
+
+      if (onboardingData.logoFile) {
+        try {
+          const logoUrl = await uploadStoreLogo(storeId, onboardingData.logoFile);
+          await updateDoc(doc(db, "stores", storeId), { logoUrl });
+          newStore.logoUrl = logoUrl;
+        } catch { /* logo upload failure is non-critical */ }
+      }
 
       if (activeUser.email === "admin@stockmaster.ai") {
         const { products: demoProducts, sales: demoSales } = generateDemoData(storeId);
@@ -703,6 +722,11 @@ export default function App() {
     );
   }
 
+  // ─── Render: Super Admin ─────────────────────────────────────────
+  if (user && isSuperAdmin) {
+    return <SuperAdminPage user={user} onLogout={handleLogout} />;
+  }
+
   // ─── Render: Auth ─────────────────────────────────────────────────
   if (!user || !currentStore) {
     if (user && authView === "onboarding") {
@@ -882,12 +906,12 @@ export default function App() {
             {currentStore?.logoUrl ? (
               <img src={currentStore.logoUrl} alt="logo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 ring-2 ring-brand-text/20" />
             ) : (
-              <div className="w-10 h-10 rounded-xl bg-brand-text/15 flex items-center justify-center flex-shrink-0">
-                <Package className="text-brand-text w-6 h-6" />
+              <div className="w-10 h-10 rounded-xl bg-brand-text-secondary/15 flex items-center justify-center flex-shrink-0">
+                <Package className="text-brand-text-secondary w-6 h-6" />
               </div>
             )}
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-brand-text leading-none">{currentStore?.name || "StockMaster"}</h1>
+              <h1 className="text-lg font-bold tracking-tight text-brand-text-secondary leading-none">{currentStore?.name || "StockMaster"}</h1>
               <p className="text-[10px] uppercase tracking-widest font-semibold text-brand-text-secondary mt-0.5">PRO ENGINE</p>
             </div>
           </div>
@@ -897,7 +921,7 @@ export default function App() {
             <div className="flex items-center gap-2 px-3 py-2 bg-brand-text/10 rounded-xl border border-brand-text/10">
               <StoreIcon size={15} className="text-brand-text-secondary shrink-0" />
               <div className="overflow-hidden">
-                <p className="text-xs font-semibold text-brand-text truncate">{currentStore?.name}</p>
+                <p className="text-xs font-semibold text-brand-text-secondary truncate">{currentStore?.name}</p>
                 <p className="text-[10px] text-brand-text-secondary capitalize">{memberRole}</p>
               </div>
             </div>
@@ -943,13 +967,13 @@ export default function App() {
                   : <UserIcon className="w-full h-full p-1.5 text-brand-text-secondary" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-brand-text truncate">{user.displayName}</p>
+                <p className="text-xs font-semibold text-brand-text-secondary truncate">{user.displayName}</p>
                 <p className="text-[10px] text-brand-text-secondary truncate">{user.email}</p>
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-brand-text-secondary hover:text-brand-text hover:bg-brand-text/10 transition-all text-sm font-medium"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-brand-text-secondary hover:text-brand-text-secondary hover:bg-brand-text-secondary/10 transition-all text-sm font-medium"
             >
               <LogOut size={15} /><span>Cerrar Sesión</span>
             </button>

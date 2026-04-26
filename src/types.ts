@@ -116,6 +116,19 @@ export interface AIInsight {
   productId?: string;
 }
 
+export interface AdminStoreView {
+  id: string;
+  name: string;
+  businessType?: string;
+  ownerId: string;
+  createdAt: string;
+  logoUrl?: string;
+  branding?: Store['branding'];
+  members: StoreMember[];
+  productCount: number;
+  saleCount: number;
+}
+
 export interface TempStoreSettings {
   name: string;
   businessType: string;

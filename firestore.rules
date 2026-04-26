@@ -1,30 +1,38 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // Global Deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper Functions
+    // ─── Helper Functions ─────────────────────────────────────────────
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Special check for demo users who might be in a restricted environment
     function isDemoUID(uid) {
       return uid == "demo-user-123" || uid == "demo-employee-456";
     }
 
+    // Email-based super admin check — works with any auth provider (Google OAuth or email/password)
+    function isSuperAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/superadmins/$(request.auth.token.email));
+    }
+
     function isStoreOwner(storeId) {
-      return (isSignedIn() && get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid)
-             || (storeId == "stockmaster-ai-demo" && request.auth == null); // Allow demo bypass if no auth
+      return (isSignedIn() &&
+        get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid)
+        || (storeId == "stockmaster-ai-demo" && request.auth == null);
     }
 
     function isStoreMember(storeId) {
-      return (storeId == "stockmaster-ai-demo" && request.auth == null) || 
-             (isSignedIn() && exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid)));
+      return (storeId == "stockmaster-ai-demo" && request.auth == null) ||
+        (isSignedIn() &&
+          exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid)));
     }
 
     function getStoreRole(storeId) {
@@ -32,61 +40,87 @@ service cloud.firestore {
     }
 
     function hasAdminRole(storeId) {
-      return (storeId == "stockmaster-ai-demo" && request.auth == null) || 
-             (isStoreMember(storeId) && getStoreRole(storeId) == 'admin');
+      return (storeId == "stockmaster-ai-demo" && request.auth == null) ||
+        (isStoreMember(storeId) && getStoreRole(storeId) == 'admin');
     }
 
     function hasEmployeeRole(storeId) {
-      return (storeId == "stockmaster-ai-demo" && request.auth == null) || 
-             (isStoreMember(storeId) && (getStoreRole(storeId) == 'admin' || getStoreRole(storeId) == 'employee'));
+      return (storeId == "stockmaster-ai-demo" && request.auth == null) ||
+        (isStoreMember(storeId) &&
+          (getStoreRole(storeId) == 'admin' || getStoreRole(storeId) == 'employee'));
     }
 
     function hasViewerRole(storeId) {
       return isStoreMember(storeId) || isStoreOwner(storeId);
     }
 
-    // Rules for Stores
+    // ─── Super Admins collection ──────────────────────────────────────
+    // Document ID = email address. Works with any auth provider.
+    // The seed admin (admin@stockmaster.ai) can write during setup.
+    match /superadmins/{email} {
+      allow read: if isSignedIn() && request.auth.token.email == email;
+      allow write: if isSignedIn() && (
+        isSuperAdmin() ||
+        request.auth.token.email == "admin@stockmaster.ai"
+      );
+    }
+
+    // ─── Stores ───────────────────────────────────────────────────────
     match /stores/{storeId} {
-      allow get: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
-      allow list: if (isSignedIn() && (resource.data.ownerId == request.auth.uid || exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid))))
-                  || storeId == "stockmaster-ai-demo";
-      
-      allow create: if isSignedIn() || (request.resource.data.ownerId == "demo-user-123"); 
-      allow update: if hasAdminRole(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
-      allow delete: if isStoreOwner(storeId) || hasAdminRole(storeId) || storeId == "stockmaster-ai-demo";
+      allow get: if hasViewerRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+      allow list: if isSuperAdmin() ||
+        (isSignedIn() && (
+          resource.data.ownerId == request.auth.uid ||
+          exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid))
+        )) ||
+        storeId == "stockmaster-ai-demo";
+
+      allow create: if isSignedIn() || (request.resource.data.ownerId == "demo-user-123");
+      allow update: if hasAdminRole(storeId) || isStoreOwner(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+      allow delete: if isStoreOwner(storeId) || hasAdminRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
 
       match /branches/{branchId} {
-        allow read: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
-        allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow read: if hasViewerRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
       }
 
       match /members/{userId} {
-        allow read: if isStoreMember(storeId) || isStoreOwner(storeId) || storeId == "stockmaster-ai-demo";
-        allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || (isSignedIn() && request.auth.uid == userId) || isDemoUser(userId) || storeId == "stockmaster-ai-demo";
+        allow read: if isStoreMember(storeId) || isStoreOwner(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || isSuperAdmin() ||
+          (isSignedIn() && request.auth.uid == userId) ||
+          isDemoUID(userId) ||
+          storeId == "stockmaster-ai-demo";
       }
 
       match /products/{productId} {
-        allow read: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
-        allow write: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow read: if hasViewerRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
       }
 
       match /sales/{saleId} {
-        allow read: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow read: if hasViewerRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
         allow create: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || storeId == "stockmaster-ai-demo";
-        allow update, delete: if isStoreOwner(storeId) || hasAdminRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow update, delete: if isStoreOwner(storeId) || hasAdminRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
       }
 
       match /restocks/{restockId} {
-        allow read: if hasViewerRole(storeId) || storeId == "stockmaster-ai-demo";
-        allow write: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || storeId == "stockmaster-ai-demo";
+        allow read: if hasViewerRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
       }
     }
 
-    // Global user profiles
+    // ─── User profiles ────────────────────────────────────────────────
     match /users/{userId} {
-      allow read, write: if (isSignedIn() && request.auth.uid == userId) || isDemoUID(userId);
+      allow read, write: if
+        (isSignedIn() && request.auth.uid == userId) ||
+        isDemoUID(userId) ||
+        isSuperAdmin();
+
       match /{allSubcollections=**} {
-        allow read, write: if (isSignedIn() && request.auth.uid == userId) || isDemoUID(userId);
+        allow read, write: if
+          (isSignedIn() && request.auth.uid == userId) ||
+          isDemoUID(userId) ||
+          isSuperAdmin();
       }
     }
   }

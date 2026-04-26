@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ShieldCheck, RefreshCw, Palette, Upload, ImageIcon, ChevronDown, ChevronUp, BrainCircuit, Building2 } from "lucide-react";
+import { ShieldCheck, RefreshCw, Palette, Upload, ImageIcon, ChevronDown, ChevronUp, BrainCircuit, Building2, Sparkles } from "lucide-react";
 import { TempStoreSettings } from "@/types";
+import { suggestBrandColors } from "@/lib/inventoryService";
 
 interface SettingsPageProps {
   storeId: string;
@@ -121,6 +122,19 @@ export function SettingsPage({
   isUploadingLogo, onLogoFileSelect, isSavingSettings, handleSaveSettings,
 }: SettingsPageProps) {
   const [fiscalExpanded, setFiscalExpanded] = React.useState(false);
+  const [isGeneratingColors, setIsGeneratingColors] = React.useState(false);
+
+  const handleAISuggestColors = async () => {
+    setIsGeneratingColors(true);
+    try {
+      const suggestion = await suggestBrandColors(tempSettings.description, tempSettings.businessType);
+      if (suggestion) {
+        setTempSettings(prev => ({ ...prev, branding: { ...prev.branding, ...suggestion } }));
+      }
+    } finally {
+      setIsGeneratingColors(false);
+    }
+  };
 
   const set = (key: keyof TempStoreSettings, value: string) =>
     setTempSettings(prev => ({ ...prev, [key]: value }));
@@ -221,9 +235,23 @@ export function SettingsPage({
 
               {/* ── 2. Colores ────────────────────────────────────────── */}
               <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="bg-indigo-50 p-1.5 rounded-lg"><Palette className="w-4 h-4 text-indigo-600" /></div>
-                  <h4 className="font-semibold text-slate-800">Colores de Marca</h4>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-indigo-50 p-1.5 rounded-lg"><Palette className="w-4 h-4 text-indigo-600" /></div>
+                    <h4 className="font-semibold text-slate-800">Colores de Marca</h4>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAISuggestColors}
+                    disabled={isGeneratingColors}
+                    className="gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 text-xs h-8"
+                  >
+                    {isGeneratingColors
+                      ? <><RefreshCw size={12} className="animate-spin" />Generando...</>
+                      : <><Sparkles size={12} />Sugerir con IA</>}
+                  </Button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
