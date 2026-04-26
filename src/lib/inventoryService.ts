@@ -3,6 +3,112 @@ import { Product, SaleRecord, AIInsight } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
+// ─── Chat Assistant ────────────────────────────────────────────────
+
+function prepareBusinessContext(products: Product[], sales: SaleRecord[], storeDescription?: string): string {
+  const now = new Date();
+  const last7 = new Date(now);
+  last7.setDate(now.getDate() - 7);
+  const last30 = new Date(now);
+  last30.setDate(now.getDate() - 30);
+
+  const recentSales = sales.filter(s => new Date(s.date) >= last7);
+  const monthlySales = sales.filter(s => new Date(s.date) >= last30);
+  const revenue7d = recentSales.reduce((acc, s) => acc + s.totalAmount, 0);
+  const revenue30d = monthlySales.reduce((acc, s) => acc + s.totalAmount, 0);
+
+  const lowStock = products.filter(p => p.quantity > 0 && p.quantity <= p.minStockLevel);
+  const outOfStock = products.filter(p => p.quantity === 0);
+
+  // Sales volume by product
+  const productVolume: Record<string, { qty: number; revenue: number; name: string }> = {};
+  sales.forEach(s => {
+    s.items.forEach(item => {
+      if (!productVolume[item.productId]) productVolume[item.productId] = { qty: 0, revenue: 0, name: item.productName };
+      productVolume[item.productId].qty += item.quantity;
+      productVolume[item.productId].revenue += item.totalPrice;
+    });
+  });
+  const topProducts = Object.values(productVolume)
+    .sort((a, b) => b.qty - a.qty)
+    .slice(0, 5)
+    .map(p => `${p.name} (${p.qty} uds, $${p.revenue.toLocaleString('es-CO')} COP)`);
+
+  const deadProducts = products.filter(p => {
+    const hasSales = sales.some(s => s.items.some(i => i.productId === p.id));
+    return !hasSales && p.quantity > 0;
+  }).map(p => p.name).slice(0, 5);
+
+  return `
+=== CONTEXTO DEL NEGOCIO (datos en tiempo real) ===
+Tipo de negocio: ${storeDescription || "Tienda general"}
+Fecha actual: ${now.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+
+INVENTARIO:
+- Total productos: ${products.length}
+- Stock bajo (≤ mínimo): ${lowStock.length} productos → ${lowStock.map(p => `${p.name} (${p.quantity} restantes)`).join(', ') || 'ninguno'}
+- Sin stock (agotados): ${outOfStock.length} → ${outOfStock.map(p => p.name).join(', ') || 'ninguno'}
+- Productos sin ventas: ${deadProducts.join(', ') || 'ninguno'}
+
+VENTAS:
+- Ingresos últimos 7 días: $${revenue7d.toLocaleString('es-CO')} COP (${recentSales.length} transacciones)
+- Ingresos últimos 30 días: $${revenue30d.toLocaleString('es-CO')} COP (${monthlySales.length} transacciones)
+- Top 5 productos más vendidos: ${topProducts.join(' | ') || 'sin ventas'}
+- Total ventas históricas: ${sales.length}
+===================================================`;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  content: string;
+}
+
+export async function askAIAssistant(
+  userMessage: string,
+  products: Product[],
+  sales: SaleRecord[],
+  storeDescription?: string,
+  history: ChatMessage[] = []
+): Promise<string> {
+  if (!process.env.GEMINI_API_KEY) {
+    return "⚠️ La IA no está configurada. Agrega tu GEMINI_API_KEY en el panel de Secrets.";
+  }
+
+  const systemInstruction = `Eres un asistente de negocios experto en retail, gestión de inventario y ventas para América Latina.
+Tu objetivo es ayudar al dueño del negocio a tomar mejores decisiones estratégicas y operativas.
+Siempre respondes en español de forma clara, concreta y útil. Evitas respuestas genéricas.
+Usas los datos reales del negocio para dar consejos específicos y accionables.
+Cuando menciones dinero usas pesos colombianos (COP).
+Si detectas problemas urgentes (stock crítico, caída de ventas), los mencionas primero.
+Tus respuestas son concisas: máximo 3-4 párrafos o una lista corta. No eres verboso.
+
+${prepareBusinessContext(products, sales, storeDescription)}`;
+
+  const contents = [
+    ...history.map(msg => ({
+      role: msg.role,
+      parts: [{ text: msg.content }],
+    })),
+    { role: 'user' as const, parts: [{ text: userMessage }] },
+  ];
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents,
+      config: {
+        systemInstruction,
+        maxOutputTokens: 600,
+      },
+    });
+    return response.text?.trim() || "No pude generar una respuesta. Intenta de nuevo.";
+  } catch (error: any) {
+    console.error("AI chat error:", error);
+    if (error?.message?.includes("API_KEY")) return "⚠️ API Key inválida o no configurada.";
+    return "Hubo un error al contactar la IA. Verifica tu conexión e intenta de nuevo.";
+  }
+}
+
 export async function getAIReplenishmentSuggestions(products: Product[], sales: SaleRecord[], storeDescription?: string): Promise<AIInsight[]> {
   if (!process.env.GEMINI_API_KEY) {
     return [{
