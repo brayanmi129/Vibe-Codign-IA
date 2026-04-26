@@ -21,9 +21,10 @@ import { toast } from "sonner";
 import {
   auth, db, googleProvider, signInWithPopup, signInWithEmailAndPassword,
   signInAnonymously, createUserWithEmailAndPassword, updateProfile, signOut,
-  onAuthStateChanged, collection, doc, setDoc, updateDoc, deleteDoc,
+  onAuthStateChanged, linkWithCredential, GoogleAuthProvider,
+  collection, doc, setDoc, updateDoc, deleteDoc,
   getDoc, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp,
-  handleFirestoreError, OperationType, User,
+  handleFirestoreError, OperationType, User, OAuthCredential,
 } from "./lib/firebase";
 import {
   Product, SaleItem, SaleRecord, InventoryStats, RestockRecord,
@@ -92,6 +93,12 @@ export default function App() {
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
 
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  // Account linking state (hybrid login: Google OAuth ↔ email/password)
+  const [pendingLinkEmail, setPendingLinkEmail] = useState('');
+  const [pendingLinkCredential, setPendingLinkCredential] = useState<OAuthCredential | null>(null);
+  const [linkPassword, setLinkPassword] = useState('');
+  const [isLinkingAccount, setIsLinkingAccount] = useState(false);
 
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -465,11 +472,16 @@ export default function App() {
         toast.success("Bienvenido");
       }
     } catch (error: any) {
-      const message = error.code === "auth/wrong-password" ? "Contraseña incorrecta" :
-        error.code === "auth/user-not-found" ? "Usuario no encontrado" :
-        error.code === "auth/email-already-in-use" ? "El email ya está en uso" :
-        error.code === "auth/operation-not-allowed" ? "El registro por email está deshabilitado en Firebase Console." :
-        "Error de autenticación";
+      const message =
+        error.code === "auth/wrong-password" || error.code === "auth/invalid-credential"
+          ? "Contraseña incorrecta. Si te registraste con Google, usa el botón «Continuar con Google»."
+          : error.code === "auth/user-not-found"
+          ? "No existe una cuenta con este email."
+          : error.code === "auth/email-already-in-use"
+          ? "El email ya está en uso."
+          : error.code === "auth/operation-not-allowed"
+          ? "El registro por email está deshabilitado en Firebase Console."
+          : "Error de autenticación";
       toast.error(message);
     }
   };
@@ -478,7 +490,42 @@ export default function App() {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       await setDoc(doc(db, "users", result.user.uid), { uid: result.user.uid, displayName: result.user.displayName, email: result.user.email, photoURL: result.user.photoURL, lastLogin: new Date().toISOString() }, { merge: true });
-    } catch { toast.error("Error al iniciar con Google"); }
+    } catch (error: any) {
+      if (error.code === 'auth/account-exists-with-different-credential') {
+        // Email already registered with email/password — offer to link accounts
+        const credential = GoogleAuthProvider.credentialFromError(error);
+        const email = error.customData?.email || '';
+        setPendingLinkEmail(email);
+        setPendingLinkCredential(credential);
+        setLinkPassword('');
+      } else {
+        toast.error("Error al iniciar con Google");
+      }
+    }
+  };
+
+  const handleLinkAccounts = async () => {
+    if (!pendingLinkEmail || !pendingLinkCredential || !linkPassword) return;
+    setIsLinkingAccount(true);
+    try {
+      // Sign in with existing email/password account
+      const result = await signInWithEmailAndPassword(auth, pendingLinkEmail, linkPassword);
+      // Link the Google credential to this account
+      await linkWithCredential(result.user, pendingLinkCredential);
+      // Update profile with Google photo if missing
+      await setDoc(doc(db, "users", result.user.uid), { lastLogin: new Date().toISOString() }, { merge: true });
+      toast.success("¡Cuentas vinculadas! Ahora puedes usar Google o email/contraseña indistintamente.");
+      setPendingLinkEmail('');
+      setPendingLinkCredential(null);
+      setLinkPassword('');
+    } catch (err: any) {
+      const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
+        ? 'Contraseña incorrecta'
+        : 'Error al vincular cuentas';
+      toast.error(msg);
+    } finally {
+      setIsLinkingAccount(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -803,6 +850,69 @@ export default function App() {
           <div className="mt-8 text-center">
             <p className="text-xs text-slate-400 font-medium">© 2024 StockMaster Pro - Todos los derechos reservados</p>
           </div>
+
+          {/* ── Account linking overlay ── */}
+          <AnimatePresence>
+            {pendingLinkEmail && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0, y: 12 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.95, opacity: 0, y: 12 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <Card className="w-full max-w-sm shadow-2xl border-none rounded-3xl overflow-hidden">
+                    <CardHeader className="text-center pb-2 pt-8">
+                      <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <img src="https://www.google.com/favicon.ico" className="w-7 h-7" alt="Google" />
+                      </div>
+                      <CardTitle className="text-xl">Vincular cuenta de Google</CardTitle>
+                      <CardDescription className="text-sm leading-relaxed">
+                        Ya existe una cuenta con{' '}
+                        <span className="font-semibold text-slate-700">{pendingLinkEmail}</span>.{' '}
+                        Ingresa tu contraseña para vincular Google a esta cuenta.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4 px-6 pb-8">
+                      <Input
+                        type="password"
+                        placeholder="Tu contraseña actual"
+                        value={linkPassword}
+                        onChange={e => setLinkPassword(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleLinkAccounts()}
+                        className="h-12 rounded-xl"
+                        autoFocus
+                      />
+                      <Button
+                        onClick={handleLinkAccounts}
+                        disabled={!linkPassword || isLinkingAccount}
+                        className="w-full h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold disabled:opacity-40"
+                      >
+                        {isLinkingAccount
+                          ? <RefreshCw size={16} className="animate-spin" />
+                          : 'Vincular y entrar'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => { setPendingLinkEmail(''); setPendingLinkCredential(null); setLinkPassword(''); }}
+                        className="w-full text-slate-400 hover:text-slate-700"
+                      >
+                        Cancelar
+                      </Button>
+                      <p className="text-center text-[11px] text-slate-400 leading-relaxed">
+                        Una vez vinculadas podrás entrar con Google <strong>o</strong> con email/contraseña indistintamente.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       );
     }

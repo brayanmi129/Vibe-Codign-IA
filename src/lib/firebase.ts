@@ -9,6 +9,8 @@ import {
   updateProfile,
   signOut,
   onAuthStateChanged,
+  linkWithCredential,
+  OAuthCredential,
   User
 } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, query, where, orderBy, onSnapshot, Timestamp, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -19,29 +21,31 @@ export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
 
-export { 
-  signInWithPopup, 
+export {
+  signInWithPopup,
   signInWithEmailAndPassword,
   signInAnonymously,
   createUserWithEmailAndPassword,
   updateProfile,
-  signOut, 
-  onAuthStateChanged, 
-  collection, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  getDoc, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy, 
+  signOut,
+  onAuthStateChanged,
+  linkWithCredential,
+  GoogleAuthProvider,
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
   onSnapshot,
   addDoc,
   serverTimestamp
 };
-export type { User };
+export type { User, OAuthCredential };
 
 // Error handling helper
 export enum OperationType {
