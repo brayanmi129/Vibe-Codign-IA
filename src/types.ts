@@ -26,7 +26,7 @@ export interface Store {
     secondaryColor: string;
     backgroundColor: string;
     textColor: string;
-    sidebarColor: string;
+    textSecondaryColor: string;
   };
 }
 
@@ -125,5 +125,5 @@ export interface TempStoreSettings {
   nit: string;
   fiscalAddress: string;
   fiscalPhone: string;
-  branding: { primaryColor: string; secondaryColor: string; backgroundColor: string; textColor: string; sidebarColor: string };
+  branding: { primaryColor: string; secondaryColor: string; backgroundColor: string; textColor: string; textSecondaryColor: string };
 }

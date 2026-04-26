@@ -238,10 +238,10 @@ export function SettingsPage({
                       </div>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Tipografía y sidebar</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Tipografía</p>
                       <div className="grid grid-cols-2 gap-3">
-                        <ColorField label="Color de texto" color={branding.textColor} onChange={v => setBranding("textColor", v)} />
-                        <ColorField label="Fondo sidebar" color={branding.sidebarColor} onChange={v => setBranding("sidebarColor", v)} />
+                        <ColorField label="Fuente principal" color={branding.textColor} onChange={v => setBranding("textColor", v)} />
+                        <ColorField label="Fuente secundaria" color={branding.textSecondaryColor} onChange={v => setBranding("textSecondaryColor", v)} />
                       </div>
                     </div>
                   </div>
@@ -251,31 +251,22 @@ export function SettingsPage({
                     className="rounded-2xl border border-slate-200 p-4 flex flex-col gap-3 transition-all duration-300"
                     style={{ backgroundColor: preview.backgroundColor }}
                   >
-                    {/* Mock sidebar strip */}
-                    <div className="flex gap-2">
-                      <div className="w-8 rounded-xl flex flex-col items-center py-2 gap-2" style={{ backgroundColor: preview.sidebarColor, border: '1px solid #e2e8f0' }}>
-                        <div className="w-4 h-4 rounded-md" style={{ backgroundColor: preview.primaryColor }} />
-                        {[1,2,3].map(i => (
-                          <div key={i} className="w-4 h-1.5 rounded-full" style={{ backgroundColor: preview.textColor + '40' }} />
-                        ))}
-                      </div>
-                      <div className="flex-1 flex flex-col gap-2">
-                        <p className="text-[9px] font-bold" style={{ color: preview.textColor }}>Resumen de Negocio</p>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {[preview.primaryColor, preview.secondaryColor].map((c, i) => (
-                            <div key={i} className="bg-white rounded-lg p-2 shadow-sm flex flex-col gap-1">
-                              <div className="w-4 h-4 rounded-md" style={{ backgroundColor: c + '30' }}>
-                                <div className="w-2 h-2 m-1 rounded-sm" style={{ backgroundColor: c }} />
-                              </div>
-                              <div className="w-full h-1 rounded-full" style={{ backgroundColor: preview.textColor + '20' }} />
-                              <div className="w-2/3 h-2 rounded-full" style={{ backgroundColor: c }} />
-                            </div>
-                          ))}
+                    <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: preview.textSecondaryColor }}>Vista previa</p>
+                    <p className="text-sm font-bold leading-tight" style={{ color: preview.textColor }}>Resumen de Negocio</p>
+                    <p className="text-[10px]" style={{ color: preview.textSecondaryColor }}>Ventas del día y métricas principales.</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[preview.primaryColor, preview.secondaryColor].map((c, i) => (
+                        <div key={i} className="bg-white rounded-xl p-2.5 shadow-sm flex flex-col gap-1.5">
+                          <div className="w-5 h-5 rounded-lg" style={{ backgroundColor: c + '25' }}>
+                            <div className="w-2.5 h-2.5 m-1.25 rounded-sm" style={{ backgroundColor: c }} />
+                          </div>
+                          <div className="w-full h-1 rounded-full" style={{ backgroundColor: preview.textSecondaryColor + '30' }} />
+                          <div className="w-3/4 h-2.5 rounded-full" style={{ backgroundColor: c }} />
                         </div>
-                        <div className="rounded-lg h-6 flex items-center justify-center text-white text-[9px] font-bold shadow" style={{ backgroundColor: preview.primaryColor }}>
-                          Guardar cambios
-                        </div>
-                      </div>
+                      ))}
+                    </div>
+                    <div className="rounded-xl h-7 flex items-center justify-center text-white text-[10px] font-bold shadow" style={{ backgroundColor: preview.primaryColor }}>
+                      Botón de acción
                     </div>
                   </div>
                 </div>

@@ -240,9 +240,9 @@ export default function App() {
       root.style.setProperty('--brand-secondary', b.secondaryColor);
       root.style.setProperty('--brand-bg', b.backgroundColor);
       root.style.setProperty('--brand-text', b.textColor || '#0f172a');
-      root.style.setProperty('--brand-sidebar', b.sidebarColor || '#ffffff');
+      root.style.setProperty('--brand-text-secondary', b.textSecondaryColor || '#64748b');
     } else {
-      ['--brand-primary','--brand-secondary','--brand-bg','--brand-text','--brand-sidebar']
+      ['--brand-primary','--brand-secondary','--brand-bg','--brand-text','--brand-text-secondary']
         .forEach(v => root.style.removeProperty(v));
     }
   }, [currentStore]);
@@ -344,7 +344,7 @@ export default function App() {
       secondaryColor: store.branding?.secondaryColor || '#4338ca',
       backgroundColor: store.branding?.backgroundColor || '#f8fafc',
       textColor: store.branding?.textColor || '#0f172a',
-      sidebarColor: store.branding?.sidebarColor || '#ffffff',
+      textSecondaryColor: store.branding?.textSecondaryColor || '#64748b',
     },
   });
 
@@ -397,7 +397,7 @@ export default function App() {
       if (!activeUser) throw new Error("Error de autenticación");
 
       const storeId = `store_${Math.random().toString(36).substr(2, 9)}`;
-      const newStore: Store = { id: storeId, name: onboardingData.storeName, businessType: onboardingData.businessType, description: onboardingData.aiDescription, ownerId: activeUser.uid, createdAt: new Date().toISOString(), branding: { ...onboardingData.branding, textColor: '#0f172a', sidebarColor: '#ffffff' } };
+      const newStore: Store = { id: storeId, name: onboardingData.storeName, businessType: onboardingData.businessType, description: onboardingData.aiDescription, ownerId: activeUser.uid, createdAt: new Date().toISOString(), branding: { ...onboardingData.branding, textColor: '#0f172a', textSecondaryColor: '#64748b' } };
       await setDoc(doc(db, "stores", storeId), newStore);
       await setDoc(doc(db, "stores", storeId, "members", activeUser.uid), { userId: activeUser.uid, storeId, role: "admin", email: activeUser.email!, displayName: activeUser.displayName || activeUser.email?.split("@")[0] });
       for (const emp of onboardingData.employees) {
@@ -872,7 +872,7 @@ export default function App() {
         </AnimatePresence>
 
         {/* Sidebar Desktop */}
-        <div className="w-72 h-full bg-brand-sidebar border-r border-slate-100 p-5 hidden md:flex flex-col shadow-sm z-30 overflow-y-auto flex-shrink-0">
+        <div className="w-72 h-full bg-white border-r border-slate-100 p-5 hidden md:flex flex-col shadow-sm z-30 overflow-y-auto flex-shrink-0">
           <div className="flex items-center gap-3 mb-5 px-2 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
             {currentStore?.logoUrl ? (
               <img src={currentStore.logoUrl} alt="logo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 shadow-md" />
@@ -883,7 +883,7 @@ export default function App() {
             )}
             <div>
               <h1 className="text-xl font-bold tracking-tight text-brand-text leading-none">{currentStore?.name || "StockMaster"}</h1>
-              <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mt-1">PRO ENGINE</p>
+              <p className="text-[10px] uppercase tracking-widest font-bold text-brand-text-secondary mt-1">PRO ENGINE</p>
             </div>
           </div>
 
