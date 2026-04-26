@@ -7,8 +7,8 @@ import {
   Sparkles,
   Plus,
   Trash2,
-  Upload,
   ImagePlus,
+  Mail,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -48,8 +48,15 @@ export interface OnboardingData {
     displayName: string;
     email: string;
     password?: string;
+    authMethod?: 'google' | 'email';
   };
-  employees: { email: string; role: UserRole; displayName: string }[];
+  employees: {
+    email: string;
+    role: UserRole;
+    displayName: string;
+    authMethod: 'google' | 'email';
+    password?: string;
+  }[];
   aiDescription: string;
 }
 
@@ -81,6 +88,8 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingLogo, setIsDraggingLogo] = useState(false);
+  const [adminAuthMethod, setAdminAuthMethod] = useState<'google' | 'email' | null>(null);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const [data, setData] = useState<OnboardingData>({
     storeName: '',
@@ -89,15 +98,34 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
     employees: [],
     aiDescription: '',
     adminInfo: currentUser
-      ? { displayName: currentUser.displayName || '', email: currentUser.email || '' }
-      : { displayName: '', email: '', password: '' },
+      ? { displayName: currentUser.displayName || '', email: currentUser.email || '', authMethod: 'google' }
+      : { displayName: '', email: '', password: '', authMethod: 'email' },
   });
 
-  const [newEmployee, setNewEmployee] = useState({ email: '', role: 'employee' as UserRole, displayName: '' });
+  const [newEmployee, setNewEmployee] = useState({
+    email: '',
+    role: 'employee' as UserRole,
+    displayName: '',
+    authMethod: 'email' as 'google' | 'email',
+    password: '',
+  });
 
   useEffect(() => {
     return () => { if (logoPreview) URL.revokeObjectURL(logoPreview); };
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      setData(prev => ({
+        ...prev,
+        adminInfo: {
+          displayName: currentUser.displayName || prev.adminInfo?.displayName || '',
+          email: currentUser.email || prev.adminInfo?.email || '',
+          authMethod: 'google',
+        },
+      }));
+    }
+  }, [currentUser]);
 
   const go = (delta: number) => {
     setDirection(delta);
@@ -106,8 +134,12 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
 
   const canContinue = (): boolean => {
     if (step === 1) return data.storeName.trim().length > 0;
-    if (step === 4 && !currentUser)
-      return !!(data.adminInfo?.displayName && data.adminInfo?.email && data.adminInfo?.password);
+    if (step === 4 && !currentUser) {
+      if (adminAuthMethod === 'email') {
+        return !!(data.adminInfo?.displayName && data.adminInfo?.email && data.adminInfo?.password);
+      }
+      return false;
+    }
     return true;
   };
 
@@ -122,7 +154,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
   const handleAddEmployee = () => {
     if (newEmployee.email && newEmployee.displayName) {
       setData(prev => ({ ...prev, employees: [...prev.employees, { ...newEmployee }] }));
-      setNewEmployee({ email: '', role: 'employee', displayName: '' });
+      setNewEmployee({ email: '', role: 'employee', displayName: '', authMethod: 'email', password: '' });
     }
   };
 
@@ -429,19 +461,21 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
               {/* ── Step 4: Admin ── */}
               {step === 4 && (
                 <div className="space-y-8">
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Administrador</p>
+                    <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                      Registra tu cuenta<br />de administrador
+                    </h2>
+                    <p className="text-slate-400 text-sm">
+                      Serás el admin de <span className="font-semibold text-slate-700">{data.storeName || 'tu tienda'}</span>.
+                    </p>
+                  </div>
+
                   {currentUser ? (
+                    /* ── Verified state ── */
                     <>
-                      <div className="space-y-3 text-center">
-                        <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Administrador</p>
-                        <h2 className="text-3xl font-bold text-slate-900 leading-tight">
-                          Tú serás el<br />administrador 👑
-                        </h2>
-                        <p className="text-slate-400 text-sm">
-                          De <span className="font-semibold text-slate-700">{data.storeName || 'tu tienda'}</span>.
-                        </p>
-                      </div>
                       <div className="flex flex-col items-center gap-4 py-2">
-                        <div className="w-20 h-20 rounded-full border-4 border-indigo-100 overflow-hidden">
+                        <div className="w-20 h-20 rounded-full border-4 border-indigo-100 overflow-hidden bg-slate-100">
                           <img
                             src={
                               currentUser.photoURL ||
@@ -467,64 +501,118 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                         Perfecto, continuar <ArrowRight size={18} className="ml-2" />
                       </Button>
                     </>
-                  ) : (
-                    <>
-                      <div className="space-y-3">
-                        <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Tu cuenta</p>
-                        <h2 className="text-3xl font-bold text-slate-900 leading-tight">
-                          Crea tu cuenta de<br />administrador
-                        </h2>
-                      </div>
-                      <div className="space-y-3">
-                        <Input
-                          placeholder="Tu nombre completo"
-                          className="h-12 rounded-xl"
-                          value={data.adminInfo?.displayName || ''}
-                          onChange={e =>
-                            setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, displayName: e.target.value } }))
-                          }
-                        />
-                        <Input
-                          type="email"
-                          placeholder="correo@empresa.com"
-                          className="h-12 rounded-xl"
-                          value={data.adminInfo?.email || ''}
-                          onChange={e =>
-                            setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, email: e.target.value } }))
-                          }
-                        />
-                        <Input
-                          type="password"
-                          placeholder="Contraseña"
-                          className="h-12 rounded-xl"
-                          value={data.adminInfo?.password || ''}
-                          onChange={e =>
-                            setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, password: e.target.value } }))
-                          }
-                        />
-                      </div>
-                      <div className="relative flex items-center gap-3">
-                        <div className="flex-1 h-px bg-slate-100" />
-                        <span className="text-xs text-slate-400 font-medium">o</span>
-                        <div className="flex-1 h-px bg-slate-100" />
-                      </div>
-                      <Button
-                        variant="outline"
-                        onClick={onGoogleSignIn}
-                        className="w-full h-12 rounded-xl gap-3 border-2"
+                  ) : adminAuthMethod === null ? (
+                    /* ── Method chooser ── */
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Elige cómo acceder</p>
+                      <button
+                        onClick={async () => {
+                          setAdminAuthMethod('google');
+                          setIsGoogleLoading(true);
+                          try { await onGoogleSignIn(); } finally { setIsGoogleLoading(false); }
+                        }}
+                        className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-100 hover:border-indigo-200 hover:bg-indigo-50 transition-all text-left group"
                       >
-                        <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="" />
-                        Continuar con Google
-                      </Button>
+                        <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm flex-shrink-0">
+                          <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-800">Continuar con Google</p>
+                          <p className="text-xs text-slate-400 mt-0.5">Rápido y seguro con tu cuenta de Google</p>
+                        </div>
+                        <ArrowRight size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                      </button>
+                      <button
+                        onClick={() => setAdminAuthMethod('email')}
+                        className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-100 hover:border-indigo-200 hover:bg-indigo-50 transition-all text-left group"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                          <Mail size={18} className="text-slate-500" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-800">Email y contraseña</p>
+                          <p className="text-xs text-slate-400 mt-0.5">Crea tu cuenta con correo y contraseña</p>
+                        </div>
+                        <ArrowRight size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                      </button>
+                    </div>
+                  ) : adminAuthMethod === 'google' ? (
+                    /* ── Waiting for Google ── */
+                    <div className="flex flex-col items-center gap-5 py-6">
+                      {isGoogleLoading ? (
+                        <>
+                          <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center animate-pulse">
+                            <img src="https://www.google.com/favicon.ico" className="w-7 h-7" alt="Google" />
+                          </div>
+                          <p className="text-slate-500 text-sm">Abriendo Google...</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-slate-500 text-sm text-center">El popup de Google se cerró sin iniciar sesión.</p>
+                          <Button
+                            onClick={async () => {
+                              setIsGoogleLoading(true);
+                              try { await onGoogleSignIn(); } finally { setIsGoogleLoading(false); }
+                            }}
+                            variant="outline"
+                            className="gap-3 h-12 rounded-xl"
+                          >
+                            <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" />
+                            Intentar de nuevo
+                          </Button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => { setAdminAuthMethod(null); setIsGoogleLoading(false); }}
+                        className="text-sm text-slate-400 hover:text-slate-700 transition-colors"
+                      >
+                        ← Cambiar método
+                      </button>
+                    </div>
+                  ) : (
+                    /* ── Email form ── */
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => setAdminAuthMethod(null)}
+                        className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700 transition-colors mb-2"
+                      >
+                        <ArrowLeft size={13} /> Cambiar método
+                      </button>
+                      <Input
+                        placeholder="Tu nombre completo"
+                        className="h-12 rounded-xl"
+                        value={data.adminInfo?.displayName || ''}
+                        onChange={e =>
+                          setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, displayName: e.target.value, authMethod: 'email' } }))
+                        }
+                      />
+                      <Input
+                        type="email"
+                        placeholder="correo@empresa.com"
+                        className="h-12 rounded-xl"
+                        value={data.adminInfo?.email || ''}
+                        onChange={e =>
+                          setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, email: e.target.value, authMethod: 'email' } }))
+                        }
+                      />
+                      <Input
+                        type="password"
+                        placeholder="Contraseña (mín. 6 caracteres)"
+                        className="h-12 rounded-xl"
+                        value={data.adminInfo?.password || ''}
+                        onChange={e =>
+                          setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, password: e.target.value, authMethod: 'email' } }))
+                        }
+                      />
                       <Button
                         onClick={() => go(1)}
                         disabled={!canContinue()}
                         size="lg"
-                        className="w-full h-14 rounded-2xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40"
+                        className="w-full h-14 rounded-2xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 mt-2"
                       >
                         Continuar <ArrowRight size={18} className="ml-2" />
                       </Button>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
@@ -588,19 +676,55 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                       value={newEmployee.displayName}
                       onChange={e => setNewEmployee(prev => ({ ...prev, displayName: e.target.value }))}
                     />
-                    <div className="flex gap-2">
+                    <Input
+                      type="email"
+                      placeholder="correo@equipo.com"
+                      className="h-11 rounded-xl"
+                      value={newEmployee.email}
+                      onChange={e => setNewEmployee(prev => ({ ...prev, email: e.target.value }))}
+                    />
+                    {/* Auth method toggle */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewEmployee(prev => ({ ...prev, authMethod: 'google', password: '' }))}
+                        className={`flex items-center justify-center gap-2 h-10 rounded-xl border-2 text-sm font-medium transition-all ${
+                          newEmployee.authMethod === 'google'
+                            ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                        }`}
+                      >
+                        <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="" />
+                        Google
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewEmployee(prev => ({ ...prev, authMethod: 'email' }))}
+                        className={`flex items-center justify-center gap-2 h-10 rounded-xl border-2 text-sm font-medium transition-all ${
+                          newEmployee.authMethod === 'email'
+                            ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                        }`}
+                      >
+                        <Mail size={14} />
+                        Email/Contraseña
+                      </button>
+                    </div>
+                    {newEmployee.authMethod === 'email' && (
                       <Input
-                        type="email"
-                        placeholder="correo@equipo.com"
-                        className="h-11 rounded-xl flex-1"
-                        value={newEmployee.email}
-                        onChange={e => setNewEmployee(prev => ({ ...prev, email: e.target.value }))}
+                        type="password"
+                        placeholder="Contraseña inicial"
+                        className="h-11 rounded-xl"
+                        value={newEmployee.password}
+                        onChange={e => setNewEmployee(prev => ({ ...prev, password: e.target.value }))}
                       />
+                    )}
+                    <div className="flex gap-2 pt-1">
                       <Select
                         value={newEmployee.role}
                         onValueChange={(v: any) => setNewEmployee(prev => ({ ...prev, role: v }))}
                       >
-                        <SelectTrigger className="h-11 w-24 rounded-xl">
+                        <SelectTrigger className="h-11 flex-1 rounded-xl">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -613,13 +737,14 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                         variant="outline"
                         className="h-11 w-11 p-0 rounded-xl flex-shrink-0"
                         onClick={handleAddEmployee}
+                        disabled={!newEmployee.email || !newEmployee.displayName}
                       >
                         <Plus size={18} />
                       </Button>
                     </div>
                   </div>
                   {data.employees.length > 0 && (
-                    <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                       {data.employees.map((emp, idx) => (
                         <motion.div
                           key={idx}
@@ -639,6 +764,11 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="secondary" className="text-[10px] capitalize">{emp.role}</Badge>
+                            <Badge variant="outline" className={`text-[10px] gap-1 ${emp.authMethod === 'google' ? 'border-blue-200 text-blue-600' : 'border-slate-200 text-slate-500'}`}>
+                              {emp.authMethod === 'google'
+                                ? <><img src="https://www.google.com/favicon.ico" className="w-2.5 h-2.5" alt="" />Google</>
+                                : <><Mail size={9} />Email</>}
+                            </Badge>
                             <Button
                               variant="ghost"
                               size="icon"

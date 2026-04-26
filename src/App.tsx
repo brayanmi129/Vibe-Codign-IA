@@ -104,7 +104,13 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authDisplayName, setAuthDisplayName] = useState("");
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [authView, setAuthView] = useState<"login" | "signup" | "onboarding">("login");
+  const authViewRef = React.useRef<"login" | "signup" | "onboarding">("login");
+  const setAuthViewTracked = (v: "login" | "signup" | "onboarding") => {
+    authViewRef.current = v;
+    setAuthView(v);
+  };
 
   const [salesDateFilter, setSalesDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
   const [salesRangeType, setSalesRangeType] = useState<'day' | 'week' | 'month'>('day');
@@ -288,13 +294,37 @@ export default function App() {
             const savedStoreId = localStorage.getItem("lastStoreId");
             handleSelectStore(storesData.find(s => s.id === savedStoreId) ?? storesData[0]);
           } else {
-            setAuthView("onboarding");
+            // Check if user has a pending store invitation
+            const userEmail = currentUser.email;
+            if (userEmail) {
+              const inviteKey = userEmail.replace(/\./g, "_");
+              const inviteDoc = await getDoc(doc(db, "userInvitations", inviteKey));
+              if (inviteDoc.exists()) {
+                const invite = inviteDoc.data();
+                await setDoc(doc(db, "users", currentUser.uid, "userStores", invite.storeId), { role: invite.role });
+                await updateDoc(doc(db, "stores", invite.storeId, "members", inviteKey), { userId: currentUser.uid });
+                await deleteDoc(doc(db, "userInvitations", inviteKey));
+                const storeDoc = await getDoc(doc(db, "stores", invite.storeId));
+                if (storeDoc.exists()) {
+                  const storeData = { ...storeDoc.data(), id: storeDoc.id } as Store;
+                  setUserStores([storeData]);
+                  handleSelectStore(storeData);
+                  return;
+                }
+              }
+            }
+            // No stores, no invitation — only go to onboarding if not already there
+            if (authViewRef.current !== "onboarding") {
+              setAuthViewTracked("onboarding");
+            }
           }
         } catch {
-          setAuthView("onboarding");
+          if (authViewRef.current !== "onboarding") {
+            setAuthViewTracked("onboarding");
+          }
         }
       } else {
-        setAuthView("login");
+        setAuthViewTracked("login");
         setCurrentStore(null);
         setUserStores([]);
         setMemberRole(null);
@@ -372,8 +402,13 @@ export default function App() {
     setIsStoreLoading(true);
     try {
       const uid = auth.currentUser?.uid ?? (user as any)?.uid;
+      const email = auth.currentUser?.email ?? (user as any)?.email;
       if (!uid) { toast.error("No hay sesión activa"); setIsStoreLoading(false); return; }
-      const memberDoc = await getDoc(doc(db, "stores", store.id, "members", uid));
+      // Try by UID first (legacy), then by email (new stores)
+      let memberDoc = await getDoc(doc(db, "stores", store.id, "members", uid));
+      if (!memberDoc.exists() && email) {
+        memberDoc = await getDoc(doc(db, "stores", store.id, "members", email.replace(/\./g, "_")));
+      }
       if (memberDoc.exists()) {
         setMemberRole(memberDoc.data().role as UserRole);
         setCurrentStore(store);
@@ -418,9 +453,14 @@ export default function App() {
       const storeId = `store_${Math.random().toString(36).substr(2, 9)}`;
       const newStore: Store = { id: storeId, name: onboardingData.storeName, businessType: onboardingData.businessType, description: onboardingData.aiDescription, ownerId: activeUser.uid, createdAt: new Date().toISOString(), branding: { ...onboardingData.branding, textColor: '#0f172a', textSecondaryColor: '#64748b' } };
       await setDoc(doc(db, "stores", storeId), newStore);
-      await setDoc(doc(db, "stores", storeId, "members", activeUser.uid), { userId: activeUser.uid, storeId, role: "admin", email: activeUser.email!, displayName: activeUser.displayName || activeUser.email?.split("@")[0] });
+      // Store admin member by email (consistent with employee lookup)
+      const adminKey = activeUser.email!.replace(/\./g, "_");
+      await setDoc(doc(db, "stores", storeId, "members", adminKey), { userId: activeUser.uid, storeId, role: "admin", email: activeUser.email!, displayName: activeUser.displayName || activeUser.email?.split("@")[0] });
       for (const emp of onboardingData.employees) {
-        await setDoc(doc(db, "stores", storeId, "members", emp.email.replace(/\./g, "_")), { ...emp, storeId, userId: "", joinedAt: new Date().toISOString() });
+        const empKey = emp.email.replace(/\./g, "_");
+        await setDoc(doc(db, "stores", storeId, "members", empKey), { ...emp, storeId, userId: "", joinedAt: new Date().toISOString() });
+        // Store invitation so employee can be auto-linked on first login
+        await setDoc(doc(db, "userInvitations", empKey), { storeId, role: emp.role, email: emp.email, displayName: emp.displayName, authMethod: emp.authMethod });
       }
       await setDoc(doc(db, "users", activeUser.uid, "userStores", storeId), { role: "admin" });
 
@@ -536,6 +576,7 @@ export default function App() {
       localStorage.removeItem("demo_user");
       setCurrentStore(null);
       setMemberRole(null);
+      setAuthViewTracked("login");
       toast.success("Sesión cerrada");
     } catch { toast.error("Error al cerrar sesión"); }
   };
@@ -709,7 +750,9 @@ export default function App() {
     if (!currentStore || !isAdmin) return;
     try {
       const memberId = inviteEmail.replace(/\./g, "_");
-      await setDoc(doc(db, "stores", currentStore.id, "members", memberId), { userId: "", storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], joinedAt: new Date().toISOString() });
+      const memberData = { userId: "", storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], joinedAt: new Date().toISOString() };
+      await setDoc(doc(db, "stores", currentStore.id, "members", memberId), memberData);
+      await setDoc(doc(db, "userInvitations", memberId), { storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], authMethod: 'email' });
       toast.success(`Invitación enviada a ${inviteEmail}`);
       setIsInviteDialogOpen(false);
       setInviteEmail("");
@@ -777,7 +820,8 @@ export default function App() {
 
   // ─── Render: Auth ─────────────────────────────────────────────────
   if (!user || !currentStore) {
-    if (user && authView === "onboarding") {
+    // Onboarding: accessible with or without user (Google sign-in happens inside wizard)
+    if (authView === "onboarding") {
       return <OnboardingWizard currentUser={user} onComplete={handleOnboardingComplete} onGoogleSignIn={handleGoogleLogin} />;
     }
     if (!user && (authView === "login" || authView === "signup")) {
@@ -793,9 +837,11 @@ export default function App() {
 
           <Card className="w-full max-w-md shadow-2xl border-none p-1 bg-white rounded-3xl overflow-hidden">
             <CardHeader className="text-center pb-2">
-              <CardTitle className="text-2xl font-bold">Bienvenido</CardTitle>
+              <CardTitle className="text-2xl font-bold">
+                {authView === "login" ? "Bienvenido" : "Crear cuenta"}
+              </CardTitle>
               <CardDescription>
-                {authView === "login" ? "Ingresa para gestionar tu inventario" : "Crea tu cuenta administradora"}
+                {authView === "login" ? "Ingresa para gestionar tu inventario" : "Regístrate como empleado invitado"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
@@ -812,17 +858,31 @@ export default function App() {
                   <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100 transition-all">
                     Iniciar Sesión
                   </Button>
-                  <div className="text-center">
-                    <Button variant="link" type="button" onClick={() => setAuthView("signup")} className="text-indigo-600">¿No tienes cuenta? Regístrate</Button>
-                  </div>
                   <div className="relative">
-                    <Separator className="my-6" />
-                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-[10px] text-slate-400 font-bold uppercase">O entra con</span>
+                    <Separator className="my-4" />
+                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-[10px] text-slate-400 font-bold uppercase">O continúa con</span>
                   </div>
                   <Button variant="outline" type="button" onClick={handleGoogleLogin} className="w-full h-12 gap-3 border-2 hover:bg-slate-50 rounded-xl">
                     <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-                    Google Login
+                    Iniciar con Google
                   </Button>
+                  <div className="relative">
+                    <Separator className="my-4" />
+                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-[10px] text-slate-400 font-bold uppercase">¿Nuevo por aquí?</span>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => setAuthViewTracked("onboarding")}
+                    className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base shadow-lg shadow-emerald-100 transition-all"
+                  >
+                    <UserPlus size={18} className="mr-2" />
+                    Registrar mi tienda
+                  </Button>
+                  <div className="text-center">
+                    <Button variant="link" type="button" onClick={() => setAuthViewTracked("signup")} className="text-slate-400 text-sm">
+                      ¿Empleado invitado? Crear cuenta
+                    </Button>
+                  </div>
                 </form>
               ) : (
                 <form onSubmit={(e) => handleEmailAuth(e, "signup")} className="space-y-4">
@@ -839,10 +899,10 @@ export default function App() {
                     <Input type="password" placeholder="Mínimo 6 caracteres" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required className="h-12 rounded-xl" />
                   </div>
                   <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100">
-                    Siguiente: Crear Tienda
+                    Crear cuenta
                   </Button>
                   <div className="text-center">
-                    <Button variant="link" type="button" onClick={() => setAuthView("login")} className="text-indigo-600">¿Ya tienes cuenta? Ingresa</Button>
+                    <Button variant="link" type="button" onClick={() => setAuthViewTracked("login")} className="text-indigo-600">¿Ya tienes cuenta? Ingresa</Button>
                   </div>
                 </form>
               )}
@@ -905,9 +965,6 @@ export default function App() {
                       >
                         Cancelar
                       </Button>
-                      <p className="text-center text-[11px] text-slate-400 leading-relaxed">
-                        Una vez vinculadas podrás entrar con Google <strong>o</strong> con email/contraseña indistintamente.
-                      </p>
                     </CardContent>
                   </Card>
                 </motion.div>
