@@ -872,32 +872,39 @@ export default function App() {
         </AnimatePresence>
 
         {/* Sidebar Desktop */}
-        <div className="w-72 h-full bg-white border-r border-slate-100 p-5 hidden md:flex flex-col shadow-sm z-30 overflow-y-auto flex-shrink-0">
-          <div className="flex items-center gap-3 mb-5 px-2 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
+        <div
+          className="w-72 h-full p-5 hidden md:flex flex-col z-30 overflow-y-auto flex-shrink-0"
+          style={{ backgroundColor: primaryColor || "#4f46e5" }}
+        >
+          {/* Logo + store name */}
+          <div className="flex items-center gap-3 mb-6 px-2 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
             {currentStore?.logoUrl ? (
-              <img src={currentStore.logoUrl} alt="logo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 shadow-md" />
+              <img src={currentStore.logoUrl} alt="logo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 ring-2 ring-white/20" />
             ) : (
-              <div className="p-2.5 rounded-xl shadow-lg transition-transform hover:scale-105" style={{ backgroundColor: primaryColor || "#4F46E5" }}>
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
                 <Package className="text-white w-6 h-6" />
               </div>
             )}
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-brand-text leading-none">{currentStore?.name || "StockMaster"}</h1>
-              <p className="text-[10px] uppercase tracking-widest font-bold text-brand-text-secondary mt-1">PRO ENGINE</p>
+              <h1 className="text-lg font-bold tracking-tight text-white leading-none">{currentStore?.name || "StockMaster"}</h1>
+              <p className="text-[10px] uppercase tracking-widest font-semibold text-white/50 mt-0.5">PRO ENGINE</p>
             </div>
           </div>
 
+          {/* Store / branch selector */}
           <div className="mb-4 px-2 space-y-2">
-            <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
-              <StoreIcon size={16} style={{ color: primaryColor || "#4F46E5" }} className="shrink-0" />
+            <div className="flex items-center gap-2 px-3 py-2 bg-white/10 rounded-xl border border-white/10">
+              <StoreIcon size={15} className="text-white/70 shrink-0" />
               <div className="overflow-hidden">
-                <p className="text-xs font-semibold text-slate-900 truncate">{currentStore?.name}</p>
-                <p className="text-[10px] text-slate-500 capitalize">{memberRole}</p>
+                <p className="text-xs font-semibold text-white truncate">{currentStore?.name}</p>
+                <p className="text-[10px] text-white/60 capitalize">{memberRole}</p>
               </div>
             </div>
             {branches.length > 0 && (
               <Select value={activeBranchId ?? "all"} onValueChange={(v) => setActiveBranchId(v === "all" ? null : v)} disabled={!isAdmin}>
-                <SelectTrigger className="w-full h-9 bg-white border-slate-200 text-xs"><SelectValue placeholder="Sucursal" /></SelectTrigger>
+                <SelectTrigger className="w-full h-9 bg-white/10 border-white/20 text-white text-xs">
+                  <SelectValue placeholder="Sucursal" />
+                </SelectTrigger>
                 <SelectContent>
                   {isAdmin && <SelectItem value="all">Todas las sucursales</SelectItem>}
                   {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
@@ -906,38 +913,45 @@ export default function App() {
             )}
           </div>
 
-          <nav className="space-y-2 flex-1">
-            <NavItem active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} icon={<LayoutDashboard size={20} />} label="Dashboard" primaryColor={primaryColor} />
-            <NavItem active={activeTab === "inventory"} onClick={() => setActiveTab("inventory")} icon={<Package size={20} />} label="Inventario" primaryColor={primaryColor} />
-            <NavItem active={activeTab === "products"} onClick={() => setActiveTab("products")} icon={<Edit2 size={20} />} label="Productos" primaryColor={primaryColor} />
-            {isAdmin && <NavItem active={activeTab === "team"} onClick={() => setActiveTab("team")} icon={<Users size={20} />} label="Equipo" primaryColor={primaryColor} />}
-            <NavItem active={activeTab === "new-sale"} onClick={() => setActiveTab("new-sale")} icon={<Plus size={20} />} label="Nueva Venta" primaryColor={primaryColor} />
-            <NavItem active={activeTab === "sales"} onClick={() => setActiveTab("sales")} icon={<ShoppingCart size={20} />} label="Ventas" primaryColor={primaryColor} />
-            <NavItem active={activeTab === "ai"} onClick={() => setActiveTab("ai")} icon={<BrainCircuit size={20} />} label="Insights IA" primaryColor={primaryColor} />
+          {/* Navigation */}
+          <nav className="space-y-1 flex-1">
+            <NavItem dark active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} icon={<LayoutDashboard size={18} />} label="Dashboard" />
+            <NavItem dark active={activeTab === "inventory"} onClick={() => setActiveTab("inventory")} icon={<Package size={18} />} label="Inventario" />
+            <NavItem dark active={activeTab === "products"} onClick={() => setActiveTab("products")} icon={<Edit2 size={18} />} label="Productos" />
+            {isAdmin && <NavItem dark active={activeTab === "team"} onClick={() => setActiveTab("team")} icon={<Users size={18} />} label="Equipo" />}
+            <NavItem dark active={activeTab === "new-sale"} onClick={() => setActiveTab("new-sale")} icon={<Plus size={18} />} label="Nueva Venta" />
+            <NavItem dark active={activeTab === "sales"} onClick={() => setActiveTab("sales")} icon={<ShoppingCart size={18} />} label="Ventas" />
+            <NavItem dark active={activeTab === "ai"} onClick={() => setActiveTab("ai")} icon={<BrainCircuit size={18} />} label="Asistente IA" />
             {isAdmin && (
               <NavItem
+                dark
                 active={activeTab === "settings"}
                 onClick={() => { setActiveTab("settings"); if (currentStore) setTempSettings(buildTempSettings(currentStore)); }}
-                icon={<Settings size={20} />}
+                icon={<Settings size={18} />}
                 label="Ajustes"
-                primaryColor={primaryColor}
               />
             )}
           </nav>
 
-          <div className="mt-auto pt-4 border-t border-slate-100 space-y-2">
-            <div className="flex items-center gap-2.5 px-2 py-1">
-              <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shadow-inner flex-shrink-0">
-                {user.photoURL ? <img src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <UserIcon className="w-full h-full p-1.5 text-slate-400" />}
+          {/* User section */}
+          <div className="mt-auto pt-4 border-t border-white/15 space-y-1">
+            <div className="flex items-center gap-2.5 px-2 py-1.5">
+              <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 overflow-hidden flex-shrink-0">
+                {user.photoURL
+                  ? <img src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                  : <UserIcon className="w-full h-full p-1.5 text-white/60" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-slate-900 truncate">{user.displayName}</p>
-                <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
+                <p className="text-xs font-semibold text-white truncate">{user.displayName}</p>
+                <p className="text-[10px] text-white/55 truncate">{user.email}</p>
               </div>
             </div>
-            <Button variant="ghost" size="sm" className="w-full justify-start gap-2.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl px-3 h-8" onClick={handleLogout}>
-              <LogOut size={15} /><span className="font-medium text-sm">Cerrar Sesión</span>
-            </Button>
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all text-sm font-medium"
+            >
+              <LogOut size={15} /><span>Cerrar Sesión</span>
+            </button>
           </div>
         </div>
 
