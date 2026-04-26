@@ -443,7 +443,10 @@ export default function App() {
             if (error.code === 'auth/operation-not-allowed') {
               activeUser = { uid: `local_${onboardingData.adminInfo.email.replace(/@/g, '_')}`, email: onboardingData.adminInfo.email, displayName: onboardingData.adminInfo.displayName } as any;
               setUser(activeUser);
-            } else throw error;
+            } else {
+              const msg = getAuthError(error, 'onboarding');
+              throw new Error(msg || error.message);
+            }
           }
         }
         await setDoc(doc(db, "users", activeUser.uid), { uid: activeUser.uid, displayName: onboardingData.adminInfo.displayName, email: onboardingData.adminInfo.email, createdAt: new Date().toISOString() }, { merge: true });
@@ -489,41 +492,75 @@ export default function App() {
     }
   };
 
+  // ─── Auth error messages ──────────────────────────────────────────
+  const getAuthError = (error: any, mode: 'login' | 'signup' | 'google' | 'onboarding'): string | null => {
+    const code = error?.code as string | undefined;
+    switch (code) {
+      case 'auth/invalid-email':
+        return 'El formato del email no es válido.';
+      case 'auth/user-not-found':
+        return 'No existe ninguna cuenta con este email.';
+      case 'auth/wrong-password':
+      case 'auth/invalid-credential':
+        return mode === 'login'
+          ? 'Contraseña incorrecta. ¿Quizás te registraste con Google?'
+          : 'Contraseña incorrecta.';
+      case 'auth/email-already-in-use':
+        return 'Ya existe una cuenta con este email. Intenta iniciar sesión.';
+      case 'auth/weak-password':
+        return 'La contraseña debe tener al menos 6 caracteres.';
+      case 'auth/too-many-requests':
+        return 'Demasiados intentos fallidos. Espera unos minutos e intenta de nuevo.';
+      case 'auth/network-request-failed':
+        return 'Error de red. Verifica tu conexión a internet.';
+      case 'auth/user-disabled':
+        return 'Esta cuenta ha sido deshabilitada. Contacta al administrador.';
+      case 'auth/operation-not-allowed':
+        return mode === 'signup'
+          ? 'El registro por email está deshabilitado. Usa Google u otro método.'
+          : 'Este método de acceso no está habilitado.';
+      case 'auth/popup-closed-by-user':
+      case 'auth/cancelled-popup-request':
+        return null; // user cancelled intentionally, no toast needed
+      case 'auth/popup-blocked':
+        return 'El popup fue bloqueado. Permite ventanas emergentes para este sitio.';
+      case 'auth/account-exists-with-different-credential':
+        return null; // handled separately (link dialog)
+      default:
+        return mode === 'google' ? 'Error al iniciar sesión con Google.' : 'Error de autenticación. Intenta de nuevo.';
+    }
+  };
+
   const handleEmailAuth = async (e: React.FormEvent, mode: "login" | "signup") => {
     e.preventDefault();
-    if (!authEmail || !authPassword) return toast.error("Completa todos los campos");
+    if (!authEmail || !authPassword) return toast.error("Completa email y contraseña.");
+    if (mode === "signup" && !authDisplayName.trim()) return toast.error("Ingresa tu nombre completo.");
     if (authEmail === "admin@stockmaster.ai" && authPassword === "Admin#123") {
+      setIsAuthLoading(true);
       try {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
-        toast.success("¡Bienvenido, Admin! 🚀");
+        toast.success("¡Bienvenido, Admin!");
       } catch (err: any) {
-        if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") toast.error("Usuario no encontrado. Ejecuta primero: npm run seed");
-        else toast.error("Error al iniciar sesión");
-      }
+        toast.error("Usuario no encontrado. Ejecuta primero: npm run seed");
+      } finally { setIsAuthLoading(false); }
       return;
     }
+    setIsAuthLoading(true);
     try {
       if (mode === "signup") {
         const result = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
         await updateProfile(result.user, { displayName: authDisplayName });
         await setDoc(doc(db, "users", result.user.uid), { uid: result.user.uid, displayName: authDisplayName, email: authEmail, createdAt: new Date().toISOString() }, { merge: true });
-        toast.success("Cuenta creada correctamente");
+        toast.success("Cuenta creada. Bienvenido!");
       } else {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
-        toast.success("Bienvenido");
+        toast.success("Sesión iniciada. Bienvenido!");
       }
     } catch (error: any) {
-      const message =
-        error.code === "auth/wrong-password" || error.code === "auth/invalid-credential"
-          ? "Contraseña incorrecta. Si te registraste con Google, usa el botón «Continuar con Google»."
-          : error.code === "auth/user-not-found"
-          ? "No existe una cuenta con este email."
-          : error.code === "auth/email-already-in-use"
-          ? "El email ya está en uso."
-          : error.code === "auth/operation-not-allowed"
-          ? "El registro por email está deshabilitado en Firebase Console."
-          : "Error de autenticación";
-      toast.error(message);
+      const msg = getAuthError(error, mode === "signup" ? "signup" : "login");
+      if (msg) toast.error(msg);
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -533,14 +570,14 @@ export default function App() {
       await setDoc(doc(db, "users", result.user.uid), { uid: result.user.uid, displayName: result.user.displayName, email: result.user.email, photoURL: result.user.photoURL, lastLogin: new Date().toISOString() }, { merge: true });
     } catch (error: any) {
       if (error.code === 'auth/account-exists-with-different-credential') {
-        // Email already registered with email/password — offer to link accounts
         const credential = GoogleAuthProvider.credentialFromError(error);
         const email = error.customData?.email || '';
         setPendingLinkEmail(email);
         setPendingLinkCredential(credential);
         setLinkPassword('');
       } else {
-        toast.error("Error al iniciar con Google");
+        const msg = getAuthError(error, 'google');
+        if (msg) toast.error(msg);
       }
     }
   };
@@ -849,20 +886,48 @@ export default function App() {
                 <form onSubmit={(e) => handleEmailAuth(e, "login")} className="space-y-4">
                   <div className="space-y-2">
                     <Label>Email</Label>
-                    <Input type="email" placeholder="email@ejemplo.com" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required className="h-12 rounded-xl" />
+                    <Input
+                      type="email"
+                      placeholder="email@ejemplo.com"
+                      value={authEmail}
+                      onChange={e => setAuthEmail(e.target.value)}
+                      disabled={isAuthLoading}
+                      required
+                      className="h-12 rounded-xl"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Contraseña</Label>
-                    <Input type="password" placeholder="••••••••" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required className="h-12 rounded-xl" />
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      value={authPassword}
+                      onChange={e => setAuthPassword(e.target.value)}
+                      disabled={isAuthLoading}
+                      required
+                      className="h-12 rounded-xl"
+                    />
                   </div>
-                  <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100 transition-all">
-                    Iniciar Sesión
+                  <Button
+                    type="submit"
+                    disabled={isAuthLoading}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100 transition-all disabled:opacity-70"
+                  >
+                    {isAuthLoading
+                      ? <RefreshCw size={18} className="animate-spin" />
+                      : "Iniciar Sesión"}
                   </Button>
                   <div className="relative">
                     <Separator className="my-4" />
                     <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-[10px] text-slate-400 font-bold uppercase">O continúa con</span>
                   </div>
-                  <Button variant="outline" type="button" onClick={handleGoogleLogin} className="w-full h-12 gap-3 border-2 hover:bg-slate-50 rounded-xl">
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={isAuthLoading}
+                    className="w-full h-12 gap-3 border-2 hover:bg-slate-50 rounded-xl"
+                  >
                     <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
                     Iniciar con Google
                   </Button>
@@ -873,6 +938,7 @@ export default function App() {
                   <Button
                     type="button"
                     onClick={() => setAuthViewTracked("onboarding")}
+                    disabled={isAuthLoading}
                     className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base shadow-lg shadow-emerald-100 transition-all"
                   >
                     <UserPlus size={18} className="mr-2" />
@@ -888,21 +954,52 @@ export default function App() {
                 <form onSubmit={(e) => handleEmailAuth(e, "signup")} className="space-y-4">
                   <div className="space-y-2">
                     <Label>Nombre Completo</Label>
-                    <Input placeholder="Tu Nombre" value={authDisplayName} onChange={e => setAuthDisplayName(e.target.value)} required className="h-12 rounded-xl" />
+                    <Input
+                      placeholder="Tu Nombre"
+                      value={authDisplayName}
+                      onChange={e => setAuthDisplayName(e.target.value)}
+                      disabled={isAuthLoading}
+                      required
+                      className="h-12 rounded-xl"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Email</Label>
-                    <Input type="email" placeholder="email@ejemplo.com" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required className="h-12 rounded-xl" />
+                    <Input
+                      type="email"
+                      placeholder="email@ejemplo.com"
+                      value={authEmail}
+                      onChange={e => setAuthEmail(e.target.value)}
+                      disabled={isAuthLoading}
+                      required
+                      className="h-12 rounded-xl"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Contraseña</Label>
-                    <Input type="password" placeholder="Mínimo 6 caracteres" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required className="h-12 rounded-xl" />
+                    <Input
+                      type="password"
+                      placeholder="Mínimo 6 caracteres"
+                      value={authPassword}
+                      onChange={e => setAuthPassword(e.target.value)}
+                      disabled={isAuthLoading}
+                      required
+                      className="h-12 rounded-xl"
+                    />
                   </div>
-                  <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100">
-                    Crear cuenta
+                  <Button
+                    type="submit"
+                    disabled={isAuthLoading}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100 disabled:opacity-70"
+                  >
+                    {isAuthLoading
+                      ? <RefreshCw size={18} className="animate-spin" />
+                      : "Crear cuenta"}
                   </Button>
                   <div className="text-center">
-                    <Button variant="link" type="button" onClick={() => setAuthViewTracked("login")} className="text-indigo-600">¿Ya tienes cuenta? Ingresa</Button>
+                    <Button variant="link" type="button" onClick={() => setAuthViewTracked("login")} className="text-indigo-600">
+                      ¿Ya tienes cuenta? Ingresa
+                    </Button>
                   </div>
                 </form>
               )}
@@ -1345,6 +1442,7 @@ export default function App() {
                   products={products}
                   sales={sales}
                   storeDescription={currentStore?.description}
+                  storeName={currentStore?.name}
                 />
               )}
               {activeTab === "new-sale" && (

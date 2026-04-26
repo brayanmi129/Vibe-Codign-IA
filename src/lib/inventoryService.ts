@@ -72,18 +72,25 @@ Reglas de color:
 
 function prepareBusinessContext(products: Product[], sales: SaleRecord[], storeDescription?: string): string {
   const now = new Date();
-  const last7 = new Date(now);
-  last7.setDate(now.getDate() - 7);
-  const last30 = new Date(now);
-  last30.setDate(now.getDate() - 30);
+  const last7 = new Date(now); last7.setDate(now.getDate() - 7);
+  const last30 = new Date(now); last30.setDate(now.getDate() - 30);
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  const todayStr = now.toISOString().split('T')[0];
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
 
+  const todaySales = sales.filter(s => s.date.startsWith(todayStr));
+  const yesterdaySales = sales.filter(s => s.date.startsWith(yesterdayStr));
   const recentSales = sales.filter(s => new Date(s.date) >= last7);
   const monthlySales = sales.filter(s => new Date(s.date) >= last30);
+
   const revenue7d = recentSales.reduce((acc, s) => acc + s.totalAmount, 0);
   const revenue30d = monthlySales.reduce((acc, s) => acc + s.totalAmount, 0);
+  const revenueToday = todaySales.reduce((acc, s) => acc + s.totalAmount, 0);
+  const revenueYesterday = yesterdaySales.reduce((acc, s) => acc + s.totalAmount, 0);
 
   const lowStock = products.filter(p => p.quantity > 0 && p.quantity <= p.minStockLevel);
   const outOfStock = products.filter(p => p.quantity === 0);
+  const totalInventoryValue = products.reduce((acc, p) => acc + (p.price * p.quantity), 0);
 
   // Sales volume by product
   const productVolume: Record<string, { qty: number; revenue: number; name: string }> = {};
@@ -95,32 +102,45 @@ function prepareBusinessContext(products: Product[], sales: SaleRecord[], storeD
     });
   });
   const topProducts = Object.values(productVolume)
-    .sort((a, b) => b.qty - a.qty)
+    .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5)
-    .map(p => `${p.name} (${p.qty} uds, $${p.revenue.toLocaleString('es-CO')} COP)`);
+    .map(p => `${p.name} (${p.qty} uds · $${p.revenue.toLocaleString('es-CO')} COP)`);
 
-  const deadProducts = products.filter(p => {
-    const hasSales = sales.some(s => s.items.some(i => i.productId === p.id));
-    return !hasSales && p.quantity > 0;
-  }).map(p => p.name).slice(0, 5);
+  const deadProducts = products.filter(p =>
+    !sales.some(s => new Date(s.date) >= last7 && s.items.some(i => i.productId === p.id)) && p.quantity > 0
+  ).map(p => p.name).slice(0, 5);
+
+  const avgSaleValue = sales.length > 0 ? (sales.reduce((acc, s) => acc + s.totalAmount, 0) / sales.length) : 0;
+
+  // Busiest day of week
+  const dayRevenue: Record<string, number> = {};
+  sales.forEach(s => {
+    const day = new Date(s.date).toLocaleDateString('es-CO', { weekday: 'long' });
+    dayRevenue[day] = (dayRevenue[day] || 0) + s.totalAmount;
+  });
+  const busiestDay = Object.entries(dayRevenue).sort((a, b) => b[1] - a[1])[0]?.[0] || 'sin datos';
 
   return `
-=== CONTEXTO DEL NEGOCIO (datos en tiempo real) ===
-Tipo de negocio: ${storeDescription || "Tienda general"}
-Fecha actual: ${now.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+=== DATOS DEL NEGOCIO EN TIEMPO REAL ===
+Descripción: ${storeDescription || "Tienda general"}
+Fecha/hora: ${now.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 
-INVENTARIO:
-- Total productos: ${products.length}
-- Stock bajo (≤ mínimo): ${lowStock.length} productos → ${lowStock.map(p => `${p.name} (${p.quantity} restantes)`).join(', ') || 'ninguno'}
-- Sin stock (agotados): ${outOfStock.length} → ${outOfStock.map(p => p.name).join(', ') || 'ninguno'}
-- Productos sin ventas: ${deadProducts.join(', ') || 'ninguno'}
+📦 INVENTARIO:
+- Productos activos: ${products.length} (valor total: $${totalInventoryValue.toLocaleString('es-CO')} COP)
+- Stock bajo (≤ mínimo): ${lowStock.length} → ${lowStock.map(p => `${p.name} (${p.quantity} restantes, mín: ${p.minStockLevel})`).join(', ') || 'ninguno'}
+- Agotados: ${outOfStock.length} → ${outOfStock.map(p => p.name).join(', ') || 'ninguno'}
+- Sin ventas esta semana: ${deadProducts.join(', ') || 'ninguno'}
 
-VENTAS:
-- Ingresos últimos 7 días: $${revenue7d.toLocaleString('es-CO')} COP (${recentSales.length} transacciones)
-- Ingresos últimos 30 días: $${revenue30d.toLocaleString('es-CO')} COP (${monthlySales.length} transacciones)
-- Top 5 productos más vendidos: ${topProducts.join(' | ') || 'sin ventas'}
-- Total ventas históricas: ${sales.length}
-===================================================`;
+💰 VENTAS:
+- Hoy: $${revenueToday.toLocaleString('es-CO')} COP (${todaySales.length} transacciones)
+- Ayer: $${revenueYesterday.toLocaleString('es-CO')} COP (${yesterdaySales.length} transacciones)
+- Últimos 7 días: $${revenue7d.toLocaleString('es-CO')} COP (${recentSales.length} transacciones)
+- Últimos 30 días: $${revenue30d.toLocaleString('es-CO')} COP (${monthlySales.length} transacciones)
+- Ticket promedio: $${Math.round(avgSaleValue).toLocaleString('es-CO')} COP
+- Día más activo: ${busiestDay}
+- Top 5 por ingresos: ${topProducts.join(' | ') || 'sin ventas'}
+- Total histórico: ${sales.length} ventas
+=========================================`;
 }
 
 export interface ChatMessage {
@@ -139,13 +159,21 @@ export async function askAIAssistant(
     return "⚠️ La IA no está configurada. Agrega tu GEMINI_API_KEY en el panel de Secrets.";
   }
 
-  const systemInstruction = `Eres un asistente de negocios experto en retail, gestión de inventario y ventas para América Latina.
-Tu objetivo es ayudar al dueño del negocio a tomar mejores decisiones estratégicas y operativas.
-Siempre respondes en español de forma clara, concreta y útil. Evitas respuestas genéricas.
-Usas los datos reales del negocio para dar consejos específicos y accionables.
-Cuando menciones dinero usas pesos colombianos (COP).
-Si detectas problemas urgentes (stock crítico, caída de ventas), los mencionas primero.
-Tus respuestas son concisas: máximo 3-4 párrafos o una lista corta. No eres verboso.
+  const systemInstruction = `Eres ARIA — Asistente de Retail con Inteligencia Artificial, especializada en negocios colombianos y latinoamericanos.
+
+PERSONALIDAD:
+- Eres directa, analítica y orientada a resultados, pero con un tono cálido y motivador.
+- No das consejos genéricos. SIEMPRE usas los datos reales del negocio.
+- Si ves un problema urgente (stock crítico, caída de ventas, producto estancado), lo dices claramente y propones una acción concreta.
+- Eres creativa: sugiere estrategias de promoción, precios psicológicos, combos, épocas del año relevantes para Colombia.
+- Cuando calculas algo, muestra el número exacto. Nada de "probablemente" si tienes los datos.
+- Usas emojis con moderación para hacer la respuesta más legible (máx 2-3 por respuesta).
+
+FORMATO:
+- Respuestas concisas: máximo 4 párrafos O una lista corta con acción clara.
+- Dinero siempre en COP con formato local (ej: $1.250.000 COP).
+- Si hay múltiples problemas, los priorizas por impacto en el negocio.
+- Termina con UNA pregunta de seguimiento relevante cuando aplique.
 
 ${prepareBusinessContext(products, sales, storeDescription)}`;
 

@@ -164,6 +164,20 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
 
   const firstName = (currentUser?.displayName || data.adminInfo?.displayName || '').split(' ')[0];
 
+  // Small AI comment bubble used across steps
+  const AiMessage = ({ message }: { message: string }) => (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex items-start gap-3 bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl p-3.5"
+    >
+      <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm shadow-indigo-200">
+        <Sparkles size={12} className="text-white" />
+      </div>
+      <p className="text-sm text-indigo-800 leading-relaxed">{message}</p>
+    </motion.div>
+  );
+
   return (
     <div className="min-h-screen flex flex-col bg-white font-sans">
       {/* Top bar */}
@@ -239,7 +253,8 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
 
               {/* ── Step 1: Store name ── */}
               {step === 1 && (
-                <div className="space-y-8">
+                <div className="space-y-6">
+                  <AiMessage message="¡Hola! Soy ARIA, tu asistente de negocios con IA. Voy a ayudarte a configurar tu tienda. Para empezar, ¿cómo se llama tu empresa?" />
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Tu negocio</p>
                     <h2 className="text-3xl font-bold text-slate-900 leading-tight">
@@ -268,14 +283,14 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
 
               {/* ── Step 2: Business type ── */}
               {step === 2 && (
-                <div className="space-y-8">
+                <div className="space-y-6">
+                  <AiMessage message={`"${data.storeName || 'Tu empresa'}"... ¡me gusta! Ahora cuéntame a qué se dedica. Elige una categoría y, si quieres, descríbelo con tus palabras — eso me ayuda a darte mejores consejos.`} />
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Categoría</p>
                     <h2 className="text-3xl font-bold text-slate-900 leading-tight">
                       ¿A qué se dedica{' '}
                       <span className="text-indigo-600">{data.storeName || 'tu empresa'}</span>?
                     </h2>
-                    <p className="text-slate-400 text-sm">La IA usará esto para personalizar tu experiencia.</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {CATEGORIES.map(cat => (
@@ -292,6 +307,20 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                         <span className="text-sm font-semibold text-slate-700">{cat.label}</span>
                       </button>
                     ))}
+                  </div>
+                  {/* Free-form description */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                      Cuéntame más{' '}
+                      <span className="text-indigo-400 normal-case font-normal">(opcional, pero me ayuda mucho)</span>
+                    </p>
+                    <Textarea
+                      placeholder={`Ej: Vendemos ropa deportiva para mujer, principalmente en Instagram, con envíos a toda Colombia. Nuestro diferencial es la atención personalizada…`}
+                      value={data.aiDescription}
+                      onChange={e => setData(prev => ({ ...prev, aiDescription: e.target.value }))}
+                      rows={3}
+                      className="rounded-2xl border-slate-200 text-sm resize-none focus:border-indigo-400 transition-all"
+                    />
                   </div>
                   <Button
                     onClick={() => go(1)}
@@ -619,21 +648,26 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
 
               {/* ── Step 5: AI description (optional) ── */}
               {step === 5 && (
-                <div className="space-y-8">
+                <div className="space-y-6">
+                  <AiMessage message={
+                    data.aiDescription
+                      ? `Ya me contaste algo sobre ${data.storeName}. Puedes ampliar la información aquí — cuanto más sepa, mejores análisis y recomendaciones podré darte.`
+                      : `Casi terminamos de conocernos. Cuéntame todo sobre ${data.storeName || 'tu negocio'}: qué vendes, a quién, cómo y dónde. Esta info es mi combustible para ayudarte.`
+                  } />
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Contexto IA</p>
                     <h2 className="text-3xl font-bold text-slate-900 leading-tight">
-                      Cuéntanos sobre<br />tu negocio
+                      {data.aiDescription ? 'Añade más contexto' : 'Cuéntame sobre tu negocio'}
                     </h2>
                     <p className="text-slate-400 text-sm">
-                      La IA usará esto para recomendaciones personalizadas.{' '}
+                      Usaré esto cada vez que me hagas una pregunta.{' '}
                       <span className="text-indigo-500 font-medium">Opcional.</span>
                     </p>
                   </div>
                   <Textarea
                     autoFocus
                     rows={5}
-                    placeholder="Ej: Vendemos ropa deportiva para mujeres, tenemos bodega propia y vendemos principalmente en Instagram…"
+                    placeholder="Ej: Vendemos ropa deportiva para mujeres, tenemos bodega propia y vendemos principalmente en Instagram. Nuestros clientes son mujeres de 20-40 años. Hacemos envíos a todo Colombia…"
                     className="rounded-2xl border-slate-200 p-4 text-sm leading-relaxed resize-none focus:border-indigo-500 transition-all"
                     value={data.aiDescription}
                     onChange={e => setData(prev => ({ ...prev, aiDescription: e.target.value }))}
@@ -826,6 +860,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
                       </p>
                     </div>
                   </div>
+                  <AiMessage message={`¡Perfecto! Ya conozco ${data.storeName}${data.aiDescription ? ' y entiendo bien tu negocio' : ''}. Desde hoy voy a analizar tu inventario y ventas para darte recomendaciones personalizadas. ¡Vamos a crecer juntos!`} />
 
                   <div className="bg-slate-50 rounded-2xl p-5 text-left space-y-3.5">
                     {[
