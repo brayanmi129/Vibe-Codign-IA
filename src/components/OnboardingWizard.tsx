@@ -57,12 +57,12 @@ const CATEGORIES = [
 ];
 
 const COLOR_PRESETS = [
-  { name: 'Índigo', primaryColor: '#4f46e5', secondaryColor: '#4338ca', backgroundColor: '#f8fafc' },
-  { name: 'Esmeralda', primaryColor: '#10b981', secondaryColor: '#047857', backgroundColor: '#f0fdf4' },
-  { name: 'Violeta', primaryColor: '#7c3aed', secondaryColor: '#5b21b6', backgroundColor: '#f5f3ff' },
-  { name: 'Rosa', primaryColor: '#ec4899', secondaryColor: '#be185d', backgroundColor: '#fdf2f8' },
-  { name: 'Naranja', primaryColor: '#f97316', secondaryColor: '#c2410c', backgroundColor: '#fff7ed' },
-  { name: 'Slate', primaryColor: '#475569', secondaryColor: '#334155', backgroundColor: '#f8fafc' },
+  { name: 'Modern Indigo', primaryColor: '#6366f1', secondaryColor: '#4f46e5', backgroundColor: '#f8fafc' },
+  { name: 'Business Emerald', primaryColor: '#059669', secondaryColor: '#047857', backgroundColor: '#f0fdf4' },
+  { name: 'Dark Graphite', primaryColor: '#1e293b', secondaryColor: '#0f172a', backgroundColor: '#f8fafc' },
+  { name: 'Royal Violet', primaryColor: '#8b5cf6', secondaryColor: '#7c3aed', backgroundColor: '#f5f3ff' },
+  { name: 'Golden Amber', primaryColor: '#d97706', secondaryColor: '#b45309', backgroundColor: '#fffbeb' },
+  { name: 'Vibrant Rose', primaryColor: '#f43f5e', secondaryColor: '#e11d48', backgroundColor: '#fff1f2' },
 ];
 
 const DEFAULT_BRANDING = COLOR_PRESETS[0];

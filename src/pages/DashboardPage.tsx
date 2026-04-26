@@ -71,39 +71,44 @@ export function DashboardPage({ analytics, stats, salesHistoryData, onOpenAI }: 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* AI chat CTA */}
-        <Card className="lg:col-span-2 bg-indigo-600 text-white border-none shadow-indigo-200 shadow-lg overflow-hidden relative">
-          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-            <BrainCircuit size={120} />
+        <Card className="lg:col-span-2 bg-slate-950 text-white border-none shadow-2xl shadow-indigo-200/20 overflow-hidden relative group">
+          <div 
+            className="absolute inset-0 opacity-50 group-hover:opacity-70 transition-opacity" 
+            style={{ backgroundImage: 'radial-gradient(circle at 20% 30%, var(--brand-primary) 0%, transparent 70%)' }}
+          />
+          <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none group-hover:scale-110 transition-transform duration-700">
+            <BrainCircuit size={160} />
           </div>
-          <CardHeader>
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles size={16} className="opacity-80" />
-              <span className="text-xs font-bold uppercase tracking-wider opacity-80">Asistente IA</span>
+          <CardHeader className="relative z-10">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1 px-2.5 rounded-full bg-white/10 border border-white/10 backdrop-blur-md">
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/90">Inteligencia Artificial</span>
+              </div>
+              <Sparkles size={14} className="text-emerald-400 animate-pulse" />
             </div>
-            <CardTitle className="text-2xl font-bold">¿Cómo está tu negocio hoy?</CardTitle>
+            <CardTitle className="text-3xl font-black tracking-tight mb-2">Potencia tus decisiones<br/>con Insights IA</CardTitle>
+            <CardDescription className="text-indigo-100/60 font-medium text-sm max-w-lg leading-relaxed">
+              Analiza tendencias, predice faltantes de stock y optimiza tus márgenes de ganancia en segundos.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-indigo-100 text-sm leading-relaxed">
-              Tu asistente tiene acceso en tiempo real a tu inventario, ventas y métricas. Pregúntale sobre stock crítico, tendencias o estrategias para aumentar tus ingresos.
-            </p>
+          <CardContent className="space-y-6 relative z-10">
             <div className="flex flex-wrap gap-2">
-              {["¿Qué productos reponer?", "Analiza mis ventas", "Estrategia para esta semana"].map(hint => (
+              {["¿Qué productos reponer?", "Analiza mis ventas", "Predicción stock"].map(hint => (
                 <button
                   key={hint}
                   onClick={onOpenAI}
-                  className="text-xs bg-white/15 hover:bg-white/25 text-white border border-white/20 rounded-full px-3 py-1.5 transition-colors"
+                  className="text-[11px] font-bold bg-white/5 hover:bg-white/15 text-white/80 border border-white/5 rounded-2xl px-4 py-2 transition-all hover:-translate-y-0.5 active:translate-y-0"
                 >
                   {hint}
                 </button>
               ))}
             </div>
             <Button
-              variant="secondary"
-              className="bg-white text-indigo-600 hover:bg-indigo-50 font-semibold mt-2"
+              className="bg-white text-slate-950 hover:bg-indigo-50 font-black h-12 px-6 rounded-2xl shadow-xl shadow-white/5 transition-all group"
               onClick={onOpenAI}
             >
-              <BrainCircuit size={16} className="mr-2" />
-              Abrir asistente
+              <BrainCircuit size={18} className="mr-2 group-hover:rotate-12 transition-transform" />
+              Ver insights ahora
             </Button>
           </CardContent>
         </Card>

@@ -1012,35 +1012,43 @@ export default function App() {
           style={{ backgroundColor: primaryColor || "#4f46e5" }}
         >
           {/* Logo + store name */}
-          <div className="flex items-center gap-3 mb-6 px-2 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
+          <div className="flex items-center gap-4 mb-8 px-2 cursor-pointer group" onClick={() => setActiveTab("dashboard")}>
             {currentStore?.logoUrl ? (
-              <img src={currentStore.logoUrl} alt="logo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 ring-2 ring-brand-text/20" />
+              <div className="relative">
+                <img src={currentStore.logoUrl} alt="logo" className="w-12 h-12 rounded-2xl object-cover flex-shrink-0 ring-4 ring-white/10 shadow-2xl transition-transform group-hover:scale-105" />
+                <div className="absolute inset-0 rounded-2xl shadow-[inset_0_0_12px_rgba(255,255,255,0.1)] pointer-events-none" />
+              </div>
             ) : (
-              <div className="w-10 h-10 rounded-xl bg-brand-text-secondary/15 flex items-center justify-center flex-shrink-0">
-                <Package className="text-brand-text-secondary w-6 h-6" />
+              <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center flex-shrink-0 ring-4 ring-white/5">
+                <Package className="text-white w-7 h-7" />
               </div>
             )}
-            <div>
-              <h1 className="text-lg font-bold tracking-tight text-brand-text-secondary leading-none">{currentStore?.name || "StockMaster"}</h1>
-              <p className="text-[10px] uppercase tracking-widest font-semibold text-brand-text-secondary mt-0.5">PRO ENGINE</p>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl font-extrabold tracking-tight text-white leading-tight truncate">{currentStore?.name || "StockMaster"}</h1>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <p className="text-[10px] uppercase tracking-widest font-black text-white/50">Sistema Activo</p>
+              </div>
             </div>
           </div>
 
           {/* Store / branch selector */}
-          <div className="mb-4 px-2 space-y-2">
-            <div className="flex items-center gap-2 px-3 py-2 bg-brand-text/10 rounded-xl border border-brand-text/10">
-              <StoreIcon size={15} className="text-brand-text-secondary shrink-0" />
+          <div className="mb-6 px-2 space-y-2">
+            <div className="flex items-center gap-3 px-4 py-3 bg-white/5 rounded-2xl border border-white/5 backdrop-blur-sm">
+              <StoreIcon size={16} className="text-white/40 shrink-0" />
               <div className="overflow-hidden">
-                <p className="text-xs font-semibold text-brand-text-secondary truncate">{currentStore?.name}</p>
-                <p className="text-[10px] text-brand-text-secondary capitalize">{memberRole}</p>
+                <p className="text-[11px] font-bold text-white/90 truncate leading-none mb-1">{currentStore?.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-black text-white/30 uppercase tracking-tighter bg-white/5 px-1.5 py-0.5 rounded leading-none">{memberRole}</span>
+                </div>
               </div>
             </div>
             {branches.length > 0 && (
               <Select value={activeBranchId ?? "all"} onValueChange={(v) => setActiveBranchId(v === "all" ? null : v)} disabled={!isAdmin}>
-                <SelectTrigger className="w-full h-9 bg-brand-text/10 border-brand-text/20 text-brand-text text-xs">
+                <SelectTrigger className="w-full h-10 bg-white/5 border-white/10 text-white text-xs rounded-xl focus:ring-white/20">
                   <SelectValue placeholder="Sucursal" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-slate-900 border-white/10 text-white">
                   {isAdmin && <SelectItem value="all">Todas las sucursales</SelectItem>}
                   {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                 </SelectContent>
@@ -1069,23 +1077,23 @@ export default function App() {
           </nav>
 
           {/* User section */}
-          <div className="mt-auto pt-4 border-t border-brand-text/15 space-y-1">
-            <div className="flex items-center gap-2.5 px-2 py-1.5">
-              <div className="w-8 h-8 rounded-full bg-brand-text/10 border border-brand-text/15 overflow-hidden flex-shrink-0">
+          <div className="mt-auto pt-6 border-t border-white/10 space-y-2">
+            <div className="flex items-center gap-3 px-3 py-2">
+              <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/10 overflow-hidden flex-shrink-0 shadow-inner">
                 {user.photoURL
                   ? <img src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                  : <UserIcon className="w-full h-full p-1.5 text-brand-text-secondary" />}
+                  : <UserIcon className="w-full h-full p-2 text-white/40" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-brand-text-secondary truncate">{user.displayName}</p>
-                <p className="text-[10px] text-brand-text-secondary truncate">{user.email}</p>
+                <p className="text-[13px] font-bold text-white truncate">{user.displayName}</p>
+                <p className="text-[10px] text-white/40 truncate font-medium">{user.email}</p>
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-brand-text-secondary hover:text-brand-text-secondary hover:bg-brand-text-secondary/10 transition-all text-sm font-medium"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-white/60 hover:text-white hover:bg-white/10 transition-all text-sm font-semibold group"
             >
-              <LogOut size={15} /><span>Cerrar Sesión</span>
+              <LogOut size={16} className="group-hover:translate-x-0.5 transition-transform" /><span>Cerrar Sesión</span>
             </button>
           </div>
         </div>
