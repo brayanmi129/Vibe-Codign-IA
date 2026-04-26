@@ -16,12 +16,11 @@ export interface Store {
   ownerId: string;
   createdAt: string;
   plan?: 'free' | 'pro';
-  // 🆕 NUEVOS CAMPOS PARA FACTURACIÓN
-  legalName?: string;        // Razón social (si difiere del nombre comercial)
-  nit?: string;              // NIT con formato xxx.xxx.xxx-x
-  fiscalAddress?: string;    // Dirección fiscal de la empresa
-  fiscalPhone?: string;      // Teléfono fiscal
-  // ───────────────────────────────────
+  logoUrl?: string;
+  legalName?: string;
+  nit?: string;
+  fiscalAddress?: string;
+  fiscalPhone?: string;
   branding?: {
     primaryColor: string;
     secondaryColor: string;
@@ -47,6 +46,7 @@ export interface Product {
   brand: string;
   price: number;
   costPrice?: number;
+  imageUrl?: string;
   quantity: number;
   category: string;
   minStockLevel: number;
@@ -79,13 +79,13 @@ export interface SaleRecord {
   date: string;
   userId: string;
   // 🆕 NUEVOS CAMPOS PARA FACTURACIÓN
-  customer?: Customer;    // Datos del cliente facturado
-  subtotal?: number;      // Total antes de IVA
-  taxRate?: number;       // % IVA aplicado (ej: 0.19)
-  taxAmount?: number;     // Monto de IVA
-  invoiceNumber?: string; // Número consecutivo de factura
-  emailSent?: boolean;    // Si se envió el correo
-  // ───────────────────────────────────
+  customer?: Customer;
+  subtotal?: number;
+  taxRate?: number;
+  taxAmount?: number;
+  invoiceNumber?: string;
+  invoicePdfUrl?: string;
+  emailSent?: boolean;
 }
 
 export interface RestockRecord {
