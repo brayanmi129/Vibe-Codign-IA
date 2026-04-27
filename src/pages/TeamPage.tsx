@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { UserPlus, Trash2, Mail } from "lucide-react";
+import { UserPlus, Trash2, Mail, Eye, EyeOff } from "lucide-react";
 import { StoreMember, UserRole, Store } from "@/types";
 
 interface TeamPageProps {
@@ -24,6 +24,8 @@ interface TeamPageProps {
   setInviteRole: (v: UserRole) => void;
   inviteAuthMethod: 'google' | 'email';
   setInviteAuthMethod: (v: 'google' | 'email') => void;
+  invitePassword: string;
+  setInvitePassword: (v: string) => void;
   handleInviteMember: (e: React.FormEvent) => void;
   handleUpdateMemberRole: (email: string, role: UserRole) => void;
   handleRemoveMember: (email: string) => void;
@@ -33,8 +35,11 @@ export function TeamPage({
   currentStore, members, user, isInviteDialogOpen, setIsInviteDialogOpen,
   inviteEmail, setInviteEmail, inviteRole, setInviteRole,
   inviteAuthMethod, setInviteAuthMethod,
+  invitePassword, setInvitePassword,
   handleInviteMember, handleUpdateMemberRole, handleRemoveMember,
 }: TeamPageProps) {
+  const [showPassword, setShowPassword] = React.useState(false);
+
   return (
     <motion.div
       key="team"
@@ -49,21 +54,24 @@ export function TeamPage({
             <CardTitle className="text-xl font-bold">Gestión de Equipo</CardTitle>
             <CardDescription>Administra quién tiene acceso a {currentStore?.name}</CardDescription>
           </div>
-          <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
+          <Dialog open={isInviteDialogOpen} onOpenChange={(open) => {
+            setIsInviteDialogOpen(open);
+            if (!open) { setInviteEmail(""); setInvitePassword(""); setInviteAuthMethod('email'); setShowPassword(false); }
+          }}>
             <DialogTrigger render={<Button className="bg-indigo-600 hover:bg-indigo-700 text-white" />}>
-              <UserPlus size={18} className="mr-2" /> Invitar Miembro
+              <UserPlus size={18} className="mr-2" /> Agregar Miembro
             </DialogTrigger>
             <DialogContent>
               <form onSubmit={handleInviteMember}>
                 <DialogHeader>
-                  <DialogTitle>Invitar Nuevo Miembro</DialogTitle>
+                  <DialogTitle>Agregar Nuevo Miembro</DialogTitle>
                   <DialogDescription>
-                    Envía una invitación para unirse a tu tienda.
+                    Agrega un miembro al equipo de {currentStore?.name}.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
-                    <Label>Email del invitado</Label>
+                    <Label>Email del miembro</Label>
                     <Input
                       type="email"
                       placeholder="ejemplo@correo.com"
@@ -77,7 +85,7 @@ export function TeamPage({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setInviteAuthMethod('google')}
+                        onClick={() => { setInviteAuthMethod('google'); setInvitePassword(''); }}
                         className={`flex items-center justify-center gap-2 h-10 rounded-xl border-2 text-sm font-medium transition-all ${
                           inviteAuthMethod === 'google'
                             ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
@@ -101,6 +109,36 @@ export function TeamPage({
                       </button>
                     </div>
                   </div>
+
+                  {inviteAuthMethod === 'email' && (
+                    <div className="grid gap-2">
+                      <Label>
+                        Contraseña temporal
+                        <span className="ml-1 text-slate-400 font-normal text-xs">(compártela con el miembro)</span>
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="Mínimo 6 caracteres"
+                          value={invitePassword}
+                          onChange={e => setInvitePassword(e.target.value)}
+                          minLength={6}
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(v => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        El miembro usará este email y contraseña para registrarse. Puedes dejarla vacía si prefieres que él mismo cree su contraseña.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="grid gap-2">
                     <Label>Rol asignado</Label>
                     <Select value={inviteRole} onValueChange={(v: any) => setInviteRole(v)}>
@@ -115,7 +153,7 @@ export function TeamPage({
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit" className="bg-indigo-600 text-white w-full">Enviar Invitación</Button>
+                  <Button type="submit" className="bg-indigo-600 text-white w-full">Agregar al equipo</Button>
                 </DialogFooter>
               </form>
             </DialogContent>

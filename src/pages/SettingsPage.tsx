@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ShieldCheck, RefreshCw, Palette, Upload, ImageIcon, ChevronDown, ChevronUp, BrainCircuit, Building2, Sparkles } from "lucide-react";
+import { ShieldCheck, RefreshCw, Palette, Upload, ImageIcon, ChevronDown, ChevronUp, BrainCircuit, Building2, Sparkles, Lock, Eye, EyeOff, ChromeIcon } from "lucide-react";
 import { TempStoreSettings } from "@/types";
 import { suggestBrandColors } from "@/lib/inventoryService";
 import { getContrastColor } from "@/lib/utils";
@@ -21,6 +21,8 @@ interface SettingsPageProps {
   onLogoFileSelect: (file: File) => void;
   isSavingSettings: boolean;
   handleSaveSettings: () => void;
+  user: any;
+  onChangePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 // ── Color swatch picker ───────────────────────────────────────────────────────
@@ -122,9 +124,53 @@ function LogoUploadZone({
 export function SettingsPage({
   storeId, tempSettings, setTempSettings,
   isUploadingLogo, onLogoFileSelect, isSavingSettings, handleSaveSettings,
+  user, onChangePassword,
 }: SettingsPageProps) {
   const [fiscalExpanded, setFiscalExpanded] = React.useState(false);
   const [isGeneratingColors, setIsGeneratingColors] = React.useState(false);
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = React.useState('');
+  const [newPassword, setNewPassword] = React.useState('');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [showCurrent, setShowCurrent] = React.useState(false);
+  const [showNew, setShowNew] = React.useState(false);
+  const [isChangingPassword, setIsChangingPassword] = React.useState(false);
+  const [passwordError, setPasswordError] = React.useState('');
+  const [passwordSuccess, setPasswordSuccess] = React.useState(false);
+
+  const isGoogleOnly = React.useMemo(() =>
+    user?.providerData?.length > 0 &&
+    user.providerData.every((p: any) => p.providerId === 'google.com'),
+    [user]
+  );
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess(false);
+    if (newPassword.length < 6) { setPasswordError('La nueva contraseña debe tener al menos 6 caracteres.'); return; }
+    if (newPassword !== confirmPassword) { setPasswordError('Las contraseñas no coinciden.'); return; }
+    setIsChangingPassword(true);
+    try {
+      await onChangePassword(currentPassword, newPassword);
+      setPasswordSuccess(true);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      const code = err?.message ? JSON.parse(err.message)?.error : err?.code;
+      if (code?.includes('wrong-password') || code?.includes('invalid-credential')) {
+        setPasswordError('La contraseña actual es incorrecta.');
+      } else if (code?.includes('too-many-requests')) {
+        setPasswordError('Demasiados intentos. Espera unos minutos.');
+      } else {
+        setPasswordError('Error al cambiar la contraseña. Intenta de nuevo.');
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   const handleAISuggestColors = async () => {
     setIsGeneratingColors(true);
@@ -186,6 +232,98 @@ export function SettingsPage({
               <p className="text-sm text-indigo-100 leading-relaxed">
                 Tienes control total sobre la identidad visual, la configuración del asistente IA y los datos fiscales de esta tienda.
               </p>
+            </CardContent>
+          </Card>
+
+          {/* ── Security / password card ── */}
+          <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
+            <CardHeader className="bg-slate-50 border-b border-slate-100">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Lock size={16} className="text-slate-500" />
+                Seguridad
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5">
+              {isGoogleOnly ? (
+                <div className="flex flex-col items-center gap-3 py-3 text-center">
+                  <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
+                    <img src="https://www.google.com/favicon.ico" className="w-6 h-6" alt="Google" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">Cuenta Google</p>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                      Tu cuenta usa autenticación de Google. La contraseña se gestiona desde tu cuenta de Google y no puede cambiarse aquí.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handlePasswordSubmit} className="space-y-3">
+                  {passwordSuccess && (
+                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl px-3 py-2.5 text-sm">
+                      <ShieldCheck size={14} /> Contraseña actualizada correctamente.
+                    </div>
+                  )}
+                  {passwordError && (
+                    <div className="bg-rose-50 border border-rose-100 text-rose-600 rounded-xl px-3 py-2.5 text-xs">
+                      {passwordError}
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-600">Contraseña actual</Label>
+                    <div className="relative">
+                      <Input
+                        type={showCurrent ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        value={currentPassword}
+                        onChange={e => setCurrentPassword(e.target.value)}
+                        className="pr-10 h-10"
+                        required
+                      />
+                      <button type="button" onClick={() => setShowCurrent(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        {showCurrent ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-600">Nueva contraseña</Label>
+                    <div className="relative">
+                      <Input
+                        type={showNew ? 'text' : 'password'}
+                        placeholder="Mín. 6 caracteres"
+                        value={newPassword}
+                        onChange={e => setNewPassword(e.target.value)}
+                        className="pr-10 h-10"
+                        required
+                      />
+                      <button type="button" onClick={() => setShowNew(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        {showNew ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-600">Confirmar nueva contraseña</Label>
+                    <Input
+                      type="password"
+                      placeholder="Repite la contraseña"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      className="h-10"
+                      required
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={isChangingPassword || !currentPassword || !newPassword || !confirmPassword}
+                    className="w-full h-10 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm disabled:opacity-40"
+                  >
+                    {isChangingPassword
+                      ? <><RefreshCw size={13} className="animate-spin mr-2" />Actualizando...</>
+                      : 'Cambiar contraseña'}
+                  </Button>
+                </form>
+              )}
             </CardContent>
           </Card>
         </div>

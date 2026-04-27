@@ -20,7 +20,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import {
   auth, db, googleProvider, signInWithPopup, signInWithEmailAndPassword,
-  signInAnonymously, createUserWithEmailAndPassword, updateProfile, signOut,
+  signInAnonymously, createUserWithEmailAndPassword, updateProfile, updatePassword,
+  reauthenticateWithCredential, EmailAuthProvider, signOut,
   onAuthStateChanged, linkWithCredential, GoogleAuthProvider,
   collection, doc, setDoc, updateDoc, deleteDoc,
   getDoc, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp,
@@ -124,6 +125,7 @@ export default function App() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<UserRole>("employee");
   const [inviteAuthMethod, setInviteAuthMethod] = useState<'google' | 'email'>('email');
+  const [invitePassword, setInvitePassword] = useState("");
 
   // ─── Analytics ────────────────────────────────────────────────────
   const analytics = useMemo(() => {
@@ -619,6 +621,14 @@ export default function App() {
     } catch { toast.error("Error al cerrar sesión"); }
   };
 
+  const handleChangePassword = async (currentPassword: string, newPassword: string) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser || !currentUser.email) throw new Error("No hay sesión activa");
+    const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+    await reauthenticateWithCredential(currentUser, credential);
+    await updatePassword(currentUser, newPassword);
+  };
+
   const handleSaveSettings = async () => {
     if (!currentStore || !tempSettings) return;
     setIsSavingSettings(true);
@@ -790,11 +800,14 @@ export default function App() {
       const memberId = inviteEmail.replace(/\./g, "_");
       const memberData = { userId: "", storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], joinedAt: new Date().toISOString(), authMethod: inviteAuthMethod };
       await setDoc(doc(db, "stores", currentStore.id, "members", memberId), memberData);
-      await setDoc(doc(db, "userInvitations", memberId), { storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], authMethod: inviteAuthMethod });
-      toast.success(`Invitación enviada a ${inviteEmail}`);
+      const invitationData: any = { storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], authMethod: inviteAuthMethod };
+      if (inviteAuthMethod === 'email' && invitePassword) invitationData.tempPassword = invitePassword;
+      await setDoc(doc(db, "userInvitations", memberId), invitationData);
+      toast.success(`Miembro ${inviteEmail} agregado al equipo`);
       setIsInviteDialogOpen(false);
       setInviteEmail("");
       setInviteAuthMethod('email');
+      setInvitePassword("");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `stores/${currentStore.id}/members`);
     }
@@ -1424,6 +1437,8 @@ export default function App() {
                   setInviteRole={setInviteRole}
                   inviteAuthMethod={inviteAuthMethod}
                   setInviteAuthMethod={setInviteAuthMethod}
+                  invitePassword={invitePassword}
+                  setInvitePassword={setInvitePassword}
                   handleInviteMember={handleInviteMember}
                   handleUpdateMemberRole={handleUpdateMemberRole}
                   handleRemoveMember={handleRemoveMember}
@@ -1469,6 +1484,8 @@ export default function App() {
                   onLogoFileSelect={handleLogoFileSelect}
                   isSavingSettings={isSavingSettings}
                   handleSaveSettings={handleSaveSettings}
+                  user={user}
+                  onChangePassword={handleChangePassword}
                 />
               )}
             </AnimatePresence>
