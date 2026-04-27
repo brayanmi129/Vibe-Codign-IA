@@ -1,4 +1,4 @@
-import { db, collection, doc, getDocs, deleteDoc, getDoc } from './firebase';
+import { db, collection, doc, getDocs, deleteDoc, getDoc, setDoc } from './firebase';
 import { Store, StoreMember, AdminStoreView } from '../types';
 
 // Document ID is the email address — works regardless of auth provider (Google OAuth or email/password)
@@ -77,4 +77,17 @@ export async function removeMemberFromStore(storeId: string, member: StoreMember
   if (member.userId) {
     await deleteDoc(doc(db, 'users', member.userId, 'userStores', storeId)).catch(() => {});
   }
+}
+
+export async function getSuperAdmins(): Promise<string[]> {
+  const snap = await getDocs(collection(db, 'superadmins'));
+  return snap.docs.map(d => d.id);
+}
+
+export async function addSuperAdmin(email: string): Promise<void> {
+  await setDoc(doc(db, 'superadmins', email), { createdAt: new Date().toISOString() });
+}
+
+export async function removeSuperAdmin(email: string): Promise<void> {
+  await deleteDoc(doc(db, 'superadmins', email));
 }

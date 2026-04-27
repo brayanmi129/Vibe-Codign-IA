@@ -3,14 +3,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck, LogOut, RefreshCw, Trash2, ChevronDown, ChevronUp,
   Store as StoreIcon, Users, Package, AlertTriangle, Search,
-  UserMinus, X, Moon, Sun, ShoppingCart,
+  UserMinus, X, Moon, Sun, ShoppingCart, UserPlus, Mail,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { AdminStoreView, StoreMember } from '../types';
-import { getAllStores, deleteStoreTenant, removeMemberFromStore } from '../lib/superAdminService';
+import { getAllStores, deleteStoreTenant, removeMemberFromStore, getSuperAdmins, addSuperAdmin, removeSuperAdmin } from '../lib/superAdminService';
 
 interface SuperAdminPageProps {
   user: any;
@@ -83,6 +83,13 @@ function useTheme(dark: boolean) {
       employee: dark ? 'bg-sky-900/50 text-sky-300 border-sky-800'
                      : 'bg-sky-100 text-sky-700 border-transparent',
     },
+    saCard:    dark ? 'bg-slate-900 border-slate-800'        : 'bg-white border-slate-200 shadow-sm',
+    saRow:     dark ? 'hover:bg-slate-800/50'                : 'hover:bg-slate-50',
+    saName:    dark ? 'text-slate-200'                       : 'text-slate-800',
+    saRemove:  dark ? 'text-slate-600 hover:text-rose-400 hover:bg-rose-500/10'
+                    : 'text-slate-400 hover:text-rose-500 hover:bg-rose-50',
+    saInput:   dark ? 'bg-slate-900 border-slate-700 text-white placeholder:text-slate-600'
+                    : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400',
   };
 }
 
@@ -99,12 +106,19 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
 
+  const [superAdmins, setSuperAdmins] = useState<string[]>([]);
+  const [newSaEmail, setNewSaEmail] = useState('');
+  const [isAddingSa, setIsAddingSa] = useState(false);
+  const [removingSaEmail, setRemovingSaEmail] = useState<string | null>(null);
+
   const load = async () => {
     setIsLoading(true);
     try {
-      setStores(await getAllStores());
+      const [storesData, adminsData] = await Promise.all([getAllStores(), getSuperAdmins()]);
+      setStores(storesData);
+      setSuperAdmins(adminsData);
     } catch {
-      toast.error('Error al cargar los tenants');
+      toast.error('Error al cargar los datos');
     } finally {
       setIsLoading(false);
     }
@@ -134,6 +148,44 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
       toast.error('Error al eliminar el tenant');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleAddSuperAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = newSaEmail.trim().toLowerCase();
+    if (!email) return;
+    if (superAdmins.includes(email)) {
+      toast.error('Ese email ya es Super Admin');
+      return;
+    }
+    setIsAddingSa(true);
+    try {
+      await addSuperAdmin(email);
+      setSuperAdmins(prev => [...prev, email]);
+      setNewSaEmail('');
+      toast.success(`${email} ahora es Super Admin`);
+    } catch {
+      toast.error('Error al añadir Super Admin');
+    } finally {
+      setIsAddingSa(false);
+    }
+  };
+
+  const handleRemoveSuperAdmin = async (email: string) => {
+    if (email === user?.email) {
+      toast.error('No puedes eliminarte a ti mismo como Super Admin');
+      return;
+    }
+    setRemovingSaEmail(email);
+    try {
+      await removeSuperAdmin(email);
+      setSuperAdmins(prev => prev.filter(e => e !== email));
+      toast.success(`${email} ya no es Super Admin`);
+    } catch {
+      toast.error('Error al eliminar Super Admin');
+    } finally {
+      setRemovingSaEmail(null);
     }
   };
 
@@ -428,11 +480,86 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
           </div>
         )}
 
-        {/* ── Footer ── */}
+        {/* ── Super Admins section ── */}
+        <div className={`border rounded-2xl overflow-hidden transition-colors ${t.saCard}`}>
+          <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: 'inherit' }}>
+            <div className="w-8 h-8 bg-violet-600/10 rounded-xl flex items-center justify-center">
+              <ShieldCheck size={15} className="text-violet-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className={`text-sm font-bold ${t.storeName}`}>Super Administradores</h3>
+              <p className={`text-[11px] ${t.storeMeta}`}>{superAdmins.length} cuenta{superAdmins.length !== 1 ? 's' : ''} con acceso global</p>
+            </div>
+          </div>
+
+          {/* Add form */}
+          <form onSubmit={handleAddSuperAdmin} className="flex gap-2 px-5 py-4">
+            <div className="relative flex-1">
+              <Mail size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 ${t.inputIcon}`} />
+              <Input
+                type="email"
+                placeholder="correo@ejemplo.com"
+                value={newSaEmail}
+                onChange={e => setNewSaEmail(e.target.value)}
+                className={`pl-8 h-9 rounded-xl text-sm transition-colors ${t.saInput}`}
+                required
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={isAddingSa || !newSaEmail.trim()}
+              className="h-9 rounded-xl bg-violet-600 hover:bg-violet-700 text-white gap-1.5 text-xs disabled:opacity-40"
+            >
+              {isAddingSa
+                ? <RefreshCw size={12} className="animate-spin" />
+                : <UserPlus size={13} />
+              }
+              Añadir
+            </Button>
+          </form>
+
+          {/* List */}
+          <div className="px-2 pb-3 space-y-0.5">
+            {superAdmins.length === 0 ? (
+              <p className={`text-xs text-center py-4 ${t.memberEmpty}`}>Sin super admins registrados</p>
+            ) : (
+              superAdmins.map(email => {
+                const isSelf = email === user?.email;
+                const isRemoving = removingSaEmail === email;
+                return (
+                  <div
+                    key={email}
+                    className={`flex items-center gap-3 py-2 px-3 rounded-xl group transition-colors ${t.saRow}`}
+                  >
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${t.memberAvatar}`}>
+                      {email[0].toUpperCase()}
+                    </div>
+                    <span className={`flex-1 text-sm truncate ${t.saName}`}>{email}</span>
+                    {isSelf && (
+                      <Badge className={`text-[10px] border ${t.roleBadge.admin}`}>tú</Badge>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={isRemoving || isSelf}
+                      onClick={() => handleRemoveSuperAdmin(email)}
+                      title={isSelf ? 'No puedes eliminarte a ti mismo' : 'Quitar Super Admin'}
+                      className={`h-7 w-7 rounded-lg transition-all ${isSelf ? 'opacity-0 pointer-events-none' : `opacity-0 group-hover:opacity-100 ${t.saRemove}`}`}
+                    >
+                      {isRemoving
+                        ? <RefreshCw size={11} className="animate-spin" />
+                        : <Trash2 size={11} />
+                      }
+                    </Button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
         <p className={`text-center text-[11px] pb-4 ${t.footer}`}>
-          Para añadir un Super Admin, crea un documento en{' '}
-          <code className={`px-1 py-0.5 rounded ${t.footerCode}`}>superadmins/{'{email}'}</code>{' '}
-          en la consola de Firebase.
+          StockMaster Pro · Panel Global
         </p>
       </div>
     </div>
