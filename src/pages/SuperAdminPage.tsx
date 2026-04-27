@@ -46,11 +46,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   retail: "Retail", 
   other: "Otro",
 };
-
 export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
   const [stores, setStores] = React.useState<AdminStoreView[]>([]);
   const [superAdmins, setSuperAdmins] = React.useState<string[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [activeView, setActiveView] = React.useState<"stores" | "admins">("stores");
 
   const [searchTerm, setSearchTerm] = React.useState("");
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
@@ -142,7 +142,7 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
         {/* Decorative Background */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 blur-[100px] pointer-events-none" />
         
-        <div className="p-8 pb-4">
+        <div className="p-8 pb-4 relative z-10">
           <div className="flex items-center gap-4 mb-10">
             <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg transform -rotate-6 rotate-container hover:rotate-0 transition-transform cursor-pointer">
               <ShieldCheck className="text-indigo-600 w-7 h-7" />
@@ -153,33 +153,45 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="px-4 py-4 bg-white/10 rounded-2xl flex items-center gap-4 border border-white/10">
-              <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shadow-lg">
-                <StoreIcon size={18} className="text-indigo-100" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[10px] font-black text-indigo-200 uppercase tracking-widest leading-none mb-1.5">Tiendas</p>
-                <p className="text-2xl font-black tracking-tight">{stores.length}</p>
-              </div>
-            </div>
+          <nav className="space-y-4">
+            <p className="text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em] px-4 mb-4">Administración</p>
             
-            <div className="px-4 py-4 bg-white/10 rounded-2xl flex items-center gap-4 border border-white/10">
-              <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shadow-lg">
-                <Users size={18} className="text-indigo-100" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[10px] font-black text-indigo-200 uppercase tracking-widest leading-none mb-1.5">Miembros</p>
-                <p className="text-2xl font-black tracking-tight">{totalMembers}</p>
-              </div>
-            </div>
-          </div>
+            <Button
+              onClick={() => setActiveView("stores")}
+              className={`w-full justify-start gap-4 h-14 rounded-2xl transition-all font-black text-xs uppercase tracking-widest px-5 ${
+                activeView === "stores" 
+                  ? "bg-white text-indigo-700 shadow-xl shadow-indigo-900/20" 
+                  : "bg-transparent text-indigo-100 hover:bg-white/10"
+              }`}
+            >
+              <StoreIcon size={20} />
+              Tiendas
+              <Badge className={`ml-auto border-none pointer-events-none ${activeView === "stores" ? "bg-indigo-700 text-white" : "bg-white/20 text-indigo-100"}`}>
+                {stores.length}
+              </Badge>
+            </Button>
+
+            <Button
+              onClick={() => setActiveView("admins")}
+              className={`w-full justify-start gap-4 h-14 rounded-2xl transition-all font-black text-xs uppercase tracking-widest px-5 ${
+                activeView === "admins" 
+                  ? "bg-white text-indigo-700 shadow-xl shadow-indigo-900/20" 
+                  : "bg-transparent text-indigo-100 hover:bg-white/10"
+              }`}
+            >
+              <Users size={20} />
+              Super Usuarios
+              <Badge className={`ml-auto border-none pointer-events-none ${activeView === "admins" ? "bg-indigo-700 text-white" : "bg-white/20 text-indigo-100"}`}>
+                {superAdmins.length}
+              </Badge>
+            </Button>
+          </nav>
         </div>
 
-        <div className="mt-auto p-8 border-t border-white/10 bg-black/5">
+        <div className="mt-auto p-8 border-t border-white/10 bg-black/5 relative z-10">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center text-sm font-black ring-2 ring-white/10 shadow-xl">
-              {user?.displayName?.[0] || user?.email?.[0]?.toUpperCase()}
+              {activeView === "admins" ? <Activity size={16} /> : (user?.displayName?.[0] || user?.email?.[0]?.toUpperCase())}
             </div>
             <div className="min-w-0">
               <p className="text-sm font-black text-white truncate">{user?.displayName || "Admin Principal"}</p>
@@ -204,8 +216,14 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
               <div className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" />
               Sistema Activo
             </div>
-            <h1 className="text-5xl font-black text-slate-900 tracking-tight">Panel de Control Global</h1>
-            <p className="text-slate-500 font-medium text-lg">Monitorea cada aspecto del ecosistema StockMaster Pro.</p>
+            <h1 className="text-5xl font-black text-slate-900 tracking-tight">
+              {activeView === "stores" ? "Control de Tiendas" : "Equipo de Super Usuarios"}
+            </h1>
+            <p className="text-slate-500 font-medium text-lg">
+              {activeView === "stores" 
+                ? "Gestiona el ecosistema de sucursales y suscriptores." 
+                : "Administra los accesos de nivel raíz al sistema."}
+            </p>
           </div>
           <Button 
             variant="outline" 
@@ -219,274 +237,254 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
           </Button>
         </header>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
-          {/* ── Stores Management (Bento Big) ── */}
-          <div className="xl:col-span-2 space-y-8">
-            <Card className="bg-white border-none shadow-2xl shadow-slate-200/40 rounded-[40px] overflow-hidden">
-              <CardHeader className="p-10 pb-6 flex flex-row items-center justify-between gap-8 flex-wrap">
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-3">
-                    <CardTitle className="text-2xl font-black text-slate-900">Ecosistema de Tiendas</CardTitle>
-                    <div className="px-3 py-1 bg-slate-900 text-white rounded-full font-black text-[10px] uppercase tracking-widest">
-                      {filtered.length} Tenants
+        <AnimatePresence mode="wait">
+          {activeView === "stores" ? (
+            <motion.div
+              key="stores"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-8"
+            >
+              <Card className="bg-white border-none shadow-2xl shadow-indigo-100/40 rounded-[40px] overflow-hidden">
+                <CardHeader className="p-10 pb-6 flex flex-row items-center justify-between gap-8 flex-wrap">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-3">
+                      <CardTitle className="text-2xl font-black text-slate-900">Ecosistema Global</CardTitle>
+                      <div className="px-3 py-1 bg-slate-900 text-white rounded-full font-black text-[10px] uppercase tracking-widest">
+                        {filtered.length} Tenants
+                      </div>
                     </div>
+                    <CardDescription className="text-base text-slate-400 font-medium">Listado detallado de todas las organizaciones registradas.</CardDescription>
                   </div>
-                  <CardDescription className="text-base text-slate-400 font-medium">Gestión administrativa de cuentas corporativas.</CardDescription>
-                </div>
-                
-                <div className="relative flex-1 min-w-[280px] max-w-sm">
-                  <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    placeholder="Filtrar por nombre, ID o email..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="pl-14 h-14 bg-slate-50 border-none rounded-2xl placeholder:text-slate-400 text-slate-900 font-bold focus:ring-4 focus:ring-indigo-50 transition-all"
-                  />
-                </div>
-              </CardHeader>
-
-              <CardContent className="p-0">
-                {isLoading ? (
-                  <div className="flex flex-col items-center justify-center p-40 text-slate-300">
-                    <RefreshCw size={56} className="animate-spin mb-6 opacity-40 text-indigo-600" />
-                    <p className="text-xs font-black uppercase tracking-[0.3em]">Consultando Nube...</p>
-                  </div>
-                ) : filtered.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center p-40 text-slate-400">
-                    <div className="w-24 h-24 bg-slate-50 rounded-[32px] flex items-center justify-center mb-8 shadow-inner">
-                      <StoreIcon size={44} className="opacity-10 text-slate-900" />
-                    </div>
-                    <p className="text-lg font-black tracking-tight text-slate-900">Sin coincidencias</p>
-                    <p className="text-sm font-medium">No hay tiendas que coincidan con tu búsqueda.</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-50">
-                    {filtered.map(store => (
-                      <motion.div key={store.id} layout className="group">
-                        <div className="flex items-center gap-8 p-10 hover:bg-slate-50/70 transition-all cursor-default">
-                          {/* Store Avatar */}
-                          <div 
-                            className="w-20 h-20 rounded-[28px] flex-shrink-0 flex items-center justify-center shadow-xl shadow-slate-200/50 overflow-hidden relative group-hover:scale-105 transition-transform duration-500"
-                            style={{ backgroundColor: store.branding?.primaryColor || "#4f46e5" }}
-                          >
-                            <div className="absolute inset-0 bg-black/10" />
-                            {store.logoUrl ? (
-                              <img src={store.logoUrl} alt="" className="w-full h-full object-cover relative z-10" />
-                            ) : (
-                              <StoreIcon size={30} className="text-white relative z-10" />
-                            )}
-                          </div>
-
-                          {/* Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-4 mb-2">
-                              <h4 className="text-xl font-black text-slate-900 truncate tracking-tight">{store.name}</h4>
-                              <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest font-mono bg-slate-50 px-2 py-0.5 rounded-md">
-                                {store.id}
-                              </span>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-5">
-                              <div className="flex items-center gap-2.5 text-xs font-black text-slate-500 uppercase tracking-widest">
-                                <Users size={16} className="text-indigo-500" />
-                                {store.members.length} Miembros
-                              </div>
-                              {store.businessType && (
-                                <Badge className="bg-slate-100 hover:bg-slate-200 text-slate-500 border-none font-black text-[10px] uppercase tracking-widest rounded-lg px-2.5">
-                                  {CATEGORY_LABELS[store.businessType] || store.businessType}
-                                </Badge>
-                              )}
-                              <div className="flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase tracking-widest shrink-0">
-                                <Activity size={12} className="shrink-0" />
-                                Monitor On
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Actions */}
-                          <div className="flex items-center gap-4">
-                            <Button
-                              variant="ghost"
-                              onClick={() => { setConfirmDeleteId(store.id); setConfirmDeleteInput(""); }}
-                              className="w-14 h-14 rounded-2xl text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all opacity-0 group-hover:opacity-100 flex items-center justify-center p-0 border border-transparent hover:border-rose-100"
-                            >
-                              <Trash2 size={24} />
-                            </Button>
-                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-300 group-hover:text-indigo-600 group-hover:bg-indigo-50 transition-all duration-300">
-                              <ChevronRight size={24} />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Confirmation Drawer */}
-                        <AnimatePresence>
-                          {confirmDeleteId === store.id && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              className="overflow-hidden bg-rose-50/50"
-                            >
-                              <div className="p-10 border-t border-rose-100 flex flex-col xl:flex-row gap-10 items-start">
-                                <div className="flex-1 space-y-4">
-                                  <div className="flex items-center gap-3 text-rose-600 font-black text-sm uppercase tracking-widest">
-                                    <AlertTriangle size={24} className="shrink-0" /> Acción Crítica de Destrucción
-                                  </div>
-                                  <p className="text-base text-rose-900 leading-relaxed font-bold">
-                                    Confirmar eliminación de <span className="underline decoration-2 underline-offset-4 font-black">"{store.name}"</span>. 
-                                    Se purgarán <span className="font-black italic">todos</span> los activos financieros, inventarios y perfiles de empleados. 
-                                    No existe protocolo de recuperación.
-                                  </p>
-                                </div>
-                                <div className="w-full xl:w-[400px] space-y-4">
-                                  <p className="text-[11px] font-black text-rose-400 uppercase tracking-[0.2em] px-1">Verificación de Identidad por Nombre</p>
-                                  <div className="flex gap-3">
-                                    <Input
-                                      placeholder={`Escribe: ${store.name}`}
-                                      value={confirmDeleteInput}
-                                      onChange={e => setConfirmDeleteInput(e.target.value)}
-                                      className="h-14 bg-white border-2 border-rose-100 rounded-[18px] text-base font-black text-rose-900 focus:ring-4 focus:ring-rose-200 focus:border-rose-300 transition-all"
-                                      autoFocus
-                                    />
-                                    <Button
-                                      disabled={confirmDeleteInput !== store.name || deletingId === store.id}
-                                      onClick={() => handleDeleteStore(store)}
-                                      className="h-14 w-14 rounded-[18px] bg-rose-600 hover:bg-rose-700 text-white shadow-2xl shadow-rose-300 transition-all flex items-center justify-center p-0 disabled:opacity-30 active:scale-95"
-                                    >
-                                      {deletingId === store.id ? (
-                                        <RefreshCw size={24} className="animate-spin" />
-                                      ) : (
-                                        <Trash2 size={24} />
-                                      )}
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      onClick={() => setConfirmDeleteId(null)}
-                                      className="h-14 w-14 rounded-[18px] text-rose-300 hover:bg-rose-100 p-0 border border-slate-200 bg-white"
-                                    >
-                                      <X size={28} />
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* ── Side Panels (Bento Small) ── */}
-          <div className="space-y-10">
-            {/* Super Admins Management */}
-            <Card className="bg-white border-none shadow-2xl shadow-slate-200/40 rounded-[40px] overflow-hidden">
-              <CardHeader className="p-10 pb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-14 h-14 bg-indigo-50 rounded-[22px] flex items-center justify-center text-indigo-600 shadow-inner">
-                    <ShieldCheck size={28} />
-                  </div>
-                  <div className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full font-black text-[10px] uppercase tracking-widest">
-                    Root Access
-                  </div>
-                </div>
-                <CardTitle className="text-2xl font-black text-slate-900">Equipo Global</CardTitle>
-                <CardDescription className="text-base text-slate-400 font-medium tracking-tight">Cuentas con privilegios de nivel raíz.</CardDescription>
-              </CardHeader>
-
-              <CardContent className="p-10 pt-4 space-y-8">
-                <form onSubmit={handleAddSuperAdmin} className="space-y-4">
-                  <div className="relative">
-                    <Mail size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  
+                  <div className="relative flex-1 min-w-[280px] max-w-sm">
+                    <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
                     <Input
-                      type="email"
-                      placeholder="email@admin.pro"
-                      value={newSaEmail}
-                      onChange={e => setNewSaEmail(e.target.value)}
-                      className="pl-14 h-14 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-50 transition-all"
-                      required
+                      placeholder="Filtrar por nombre, ID o email..."
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      className="pl-14 h-14 bg-slate-50 border-none rounded-2xl placeholder:text-slate-400 text-slate-900 font-bold focus:ring-4 focus:ring-indigo-50 transition-all"
                     />
                   </div>
-                  <Button
-                    type="submit"
-                    disabled={isAddingSa || !newSaEmail.trim()}
-                    className="w-full h-14 bg-slate-900 border-2 border-slate-900 hover:bg-indigo-600 hover:border-indigo-600 text-white rounded-[18px] font-black uppercase text-xs tracking-[0.25em] shadow-2xl active:scale-[0.98] transition-all gap-4 disabled:opacity-30"
-                  >
-                    {isAddingSa ? <RefreshCw size={20} className="animate-spin" /> : <UserPlus size={20} />}
-                    Asignar Privilegios
-                  </Button>
-                </form>
+                </CardHeader>
 
-                <div className="space-y-4">
-                  <p className="text-[11px] font-black text-slate-300 uppercase tracking-[0.3em] px-1 translate-y-2">Jerarquía Autorizada</p>
-                  <div className="space-y-2 translate-y-4">
-                    {superAdmins.map(email => {
-                      const isSelf = email === user?.email;
-                      const isRemoving = removingSaEmail === email;
-                      return (
-                        <div key={email} className="flex items-center gap-5 p-4 rounded-[22px] hover:bg-slate-50 transition-all group relative border border-transparent hover:border-slate-100">
-                          <div className="w-12 h-12 rounded-full bg-slate-900 text-white flex items-center justify-center text-sm font-black ring-4 ring-slate-100 shrink-0 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                            {email[0].toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-black text-slate-900 truncate tracking-tight">{email}</p>
-                            {isSelf && <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-0.5">Eres tú</p>}
-                          </div>
-                          {!isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              disabled={isRemoving}
-                              onClick={() => handleRemoveSuperAdmin(email)}
-                              className="h-10 w-10 text-slate-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all rounded-xl"
+                <CardContent className="p-0">
+                  {isLoading ? (
+                    <div className="flex flex-col items-center justify-center p-40 text-slate-300">
+                      <RefreshCw size={56} className="animate-spin mb-6 opacity-40 text-indigo-600" />
+                      <p className="text-xs font-black uppercase tracking-[0.3em]">Consultando Nube...</p>
+                    </div>
+                  ) : filtered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-40 text-slate-400">
+                      <div className="w-24 h-24 bg-slate-50 rounded-[32px] flex items-center justify-center mb-8 shadow-inner">
+                        <StoreIcon size={44} className="opacity-10 text-slate-900" />
+                      </div>
+                      <p className="text-lg font-black tracking-tight text-slate-900">Sin coincidencias</p>
+                      <p className="text-sm font-medium">No hay tiendas que coincidan con tu búsqueda.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-50">
+                      {filtered.map(store => (
+                        <motion.div key={store.id} layout className="group">
+                          <div className="flex items-center gap-8 p-10 hover:bg-indigo-50/30 transition-all cursor-default">
+                            {/* Store Avatar */}
+                            <div 
+                              className="w-20 h-20 rounded-[28px] flex-shrink-0 flex items-center justify-center shadow-xl shadow-slate-200/50 overflow-hidden relative group-hover:scale-105 transition-transform duration-500"
+                              style={{ backgroundColor: store.branding?.primaryColor || "#4f46e5" }}
                             >
-                              {isRemoving ? <RefreshCw size={18} className="animate-spin" /> : <Trash2 size={18} />}
-                            </Button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                              <div className="absolute inset-0 bg-black/10" />
+                              {store.logoUrl ? (
+                                <img src={store.logoUrl} alt="" className="w-full h-full object-cover relative z-10" />
+                              ) : (
+                                <StoreIcon size={30} className="text-white relative z-10" />
+                              )}
+                            </div>
 
-            {/* Global Stats / Health */}
-            <Card className="bg-indigo-700 text-white border-none shadow-2xl shadow-indigo-200/50 rounded-[40px] overflow-hidden relative p-10 group">
-              {/* Animated Accents */}
-              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 blur-[80px] -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-1000" />
-              <div className="absolute bottom-0 left-0 w-32 h-32 bg-indigo-400/20 blur-[50px] translate-y-1/2 -translate-x-1/2" />
-              
-              <div className="relative z-10 space-y-8">
-                <div className="space-y-3">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 rounded-full text-white font-black text-[10px] uppercase tracking-widest">
-                    <Activity size={14} className="animate-pulse" /> Global Health
-                  </div>
-                  <h3 className="text-3xl font-black tracking-tight leading-tight">Métricas de Escalabilidad</h3>
-                  <p className="text-indigo-100 text-sm font-medium leading-relaxed opacity-80">Rendimiento garantizado para el crecimiento de StockMaster Pro en la nube.</p>
-                </div>
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-4 mb-2">
+                                <h4 className="text-xl font-black text-slate-900 truncate tracking-tight">{store.name}</h4>
+                                <span className="text-[11px] font-black text-indigo-600 uppercase tracking-widest font-mono bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                                  {store.id}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-5">
+                                <div className="flex items-center gap-2.5 text-xs font-black text-slate-500 uppercase tracking-widest">
+                                  <Users size={16} className="text-indigo-500" />
+                                  {store.members.length} Miembros
+                                </div>
+                                {store.businessType && (
+                                  <Badge className="bg-slate-100 hover:bg-slate-200 text-slate-500 border-none font-black text-[10px] uppercase tracking-widest rounded-lg px-2.5">
+                                    {CATEGORY_LABELS[store.businessType] || store.businessType}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
 
-                <div className="grid grid-cols-2 gap-5">
-                  <div className="p-5 rounded-[22px] bg-white/10 border border-white/10 backdrop-blur-md">
-                    <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Disponibilidad</p>
-                    <p className="text-3xl font-black text-white leading-none">99.9<span className="text-lg opacity-60">%</span></p>
-                  </div>
-                  <div className="p-5 rounded-[22px] bg-white/10 border border-white/10 backdrop-blur-md">
-                    <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Latencia</p>
-                    <p className="text-3xl font-black text-white leading-none">24<span className="text-lg opacity-60">ms</span></p>
-                  </div>
-                </div>
+                            {/* Actions */}
+                            <div className="flex items-center gap-4">
+                              <Button
+                                variant="ghost"
+                                onClick={() => { setConfirmDeleteId(store.id); setConfirmDeleteInput(""); }}
+                                className="w-14 h-14 rounded-2xl text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all opacity-0 group-hover:opacity-100 flex items-center justify-center p-0 border border-transparent hover:border-rose-100"
+                              >
+                                <Trash2 size={24} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 group-hover:text-indigo-600 group-hover:bg-indigo-50 transition-all duration-300 flex items-center justify-center p-0"
+                              >
+                                <ChevronRight size={24} />
+                              </Button>
+                            </div>
+                          </div>
 
-                <Button className="w-full bg-white text-indigo-700 hover:bg-indigo-50 h-14 rounded-[20px] font-black uppercase text-xs tracking-[0.2em] gap-3 shadow-xl active:scale-[0.98] transition-all">
-                  Analizar Latencia
-                  <ArrowRight size={16} />
-                </Button>
-              </div>
-            </Card>
-          </div>
-        </div>
+                          {/* Confirmation Drawer */}
+                          <AnimatePresence>
+                            {confirmDeleteId === store.id && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden bg-rose-50/50"
+                              >
+                                <div className="p-10 border-t border-rose-100 flex flex-col xl:flex-row gap-10 items-start">
+                                  <div className="flex-1 space-y-4">
+                                    <div className="flex items-center gap-3 text-rose-600 font-black text-sm uppercase tracking-widest">
+                                      <AlertTriangle size={24} className="shrink-0" /> Acción Crítica de Destrucción
+                                    </div>
+                                    <p className="text-base text-rose-900 leading-relaxed font-bold">
+                                      Confirmar eliminación de <span className="underline decoration-2 underline-offset-4 font-black">"{store.name}"</span>. 
+                                      Se purgarán <span className="font-black italic">todos</span> los activos financieros, inventarios y perfiles de empleados. 
+                                      No existe protocolo de recuperación.
+                                    </p>
+                                  </div>
+                                  <div className="w-full xl:w-[400px] space-y-4">
+                                    <p className="text-[11px] font-black text-rose-400 uppercase tracking-[0.2em] px-1">Verificación de Identidad por Nombre</p>
+                                    <div className="flex gap-3">
+                                      <Input
+                                        placeholder={`Escribe: ${store.name}`}
+                                        value={confirmDeleteInput}
+                                        onChange={e => setConfirmDeleteInput(e.target.value)}
+                                        className="h-14 bg-white border-2 border-rose-100 rounded-[18px] text-base font-black text-rose-900 focus:ring-4 focus:ring-rose-200 focus:border-rose-300 transition-all"
+                                        autoFocus
+                                      />
+                                      <Button
+                                        disabled={confirmDeleteInput !== store.name || deletingId === store.id}
+                                        onClick={() => handleDeleteStore(store)}
+                                        className="h-14 w-14 rounded-[18px] bg-rose-600 hover:bg-rose-700 text-white shadow-2xl shadow-rose-300 transition-all flex items-center justify-center p-0 disabled:opacity-30 active:scale-95"
+                                      >
+                                        {deletingId === store.id ? (
+                                          <RefreshCw size={24} className="animate-spin" />
+                                        ) : (
+                                          <Trash2 size={24} />
+                                        )}
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        onClick={() => setConfirmDeleteId(null)}
+                                        className="h-14 w-14 rounded-[18px] text-rose-300 hover:bg-rose-100 p-0 border border-slate-200 bg-white"
+                                      >
+                                        <X size={28} />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="admins"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="max-w-4xl mx-auto"
+            >
+              <Card className="bg-white border-none shadow-2xl shadow-indigo-100/40 rounded-[40px] overflow-hidden">
+                <CardHeader className="p-10 pb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-14 h-14 bg-indigo-50 rounded-[22px] flex items-center justify-center text-indigo-600 shadow-inner">
+                      <ShieldCheck size={28} />
+                    </div>
+                    <div className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full font-black text-[10px] uppercase tracking-widest">
+                      Admin Management
+                    </div>
+                  </div>
+                  <CardTitle className="text-2xl font-black text-slate-900">Equipo de Altas Capacidades</CardTitle>
+                  <CardDescription className="text-base text-slate-400 font-medium tracking-tight">Cuentas con privilegios de nivel raíz para gestionar todo el ecosistema.</CardDescription>
+                </CardHeader>
+
+                <CardContent className="p-10 pt-4 space-y-12">
+                  <form onSubmit={handleAddSuperAdmin} className="space-y-4 bg-slate-50 p-8 rounded-[32px] border border-slate-100">
+                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Añadir nuevo Super Administrador</p>
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="relative flex-1">
+                        <Mail size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          type="email"
+                          placeholder="email@stockmaster.pro"
+                          value={newSaEmail}
+                          onChange={e => setNewSaEmail(e.target.value)}
+                          className="pl-14 h-14 bg-white border-none rounded-2xl text-base font-black text-slate-900 placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm"
+                          required
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        disabled={isAddingSa || !newSaEmail.trim()}
+                        className="h-14 px-8 bg-indigo-600 border-2 border-indigo-600 hover:bg-indigo-700 hover:border-indigo-700 text-white rounded-[18px] font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-100 active:scale-[0.98] transition-all gap-4 disabled:opacity-30"
+                      >
+                        {isAddingSa ? <RefreshCw size={20} className="animate-spin" /> : <UserPlus size={20} />}
+                        Autorizar
+                      </Button>
+                    </div>
+                  </form>
+
+                  <div className="space-y-6">
+                    <p className="text-[11px] font-black text-slate-300 uppercase tracking-[0.3em] px-1">Lista de Personal Autorizado</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {superAdmins.map(email => {
+                        const isSelf = email === user?.email;
+                        const isRemoving = removingSaEmail === email;
+                        return (
+                          <div key={email} className="flex items-center gap-5 p-6 rounded-[28px] bg-white border border-slate-100 hover:border-indigo-100 hover:bg-indigo-50/10 transition-all group relative">
+                            <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-sm font-black ring-4 ring-slate-50 shrink-0 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                              {email[0].toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-black text-slate-900 truncate tracking-tight">{email}</p>
+                              {isSelf && <Badge className="bg-indigo-600 text-white border-none font-black text-[9px] uppercase tracking-widest mt-1">Tu Perfil</Badge>}
+                            </div>
+                            {!isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={isRemoving}
+                                onClick={() => handleRemoveSuperAdmin(email)}
+                                className="h-12 w-12 text-slate-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all rounded-xl border border-transparent hover:border-rose-100"
+                              >
+                                {isRemoving ? <RefreshCw size={20} className="animate-spin" /> : <Trash2 size={20} />}
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );
