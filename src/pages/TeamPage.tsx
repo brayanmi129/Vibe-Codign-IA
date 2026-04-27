@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { UserPlus, Trash2 } from "lucide-react";
+import { UserPlus, Trash2, Mail } from "lucide-react";
 import { StoreMember, UserRole, Store } from "@/types";
 
 interface TeamPageProps {
@@ -22,6 +22,8 @@ interface TeamPageProps {
   setInviteEmail: (v: string) => void;
   inviteRole: UserRole;
   setInviteRole: (v: UserRole) => void;
+  inviteAuthMethod: 'google' | 'email';
+  setInviteAuthMethod: (v: 'google' | 'email') => void;
   handleInviteMember: (e: React.FormEvent) => void;
   handleUpdateMemberRole: (email: string, role: UserRole) => void;
   handleRemoveMember: (email: string) => void;
@@ -30,6 +32,7 @@ interface TeamPageProps {
 export function TeamPage({
   currentStore, members, user, isInviteDialogOpen, setIsInviteDialogOpen,
   inviteEmail, setInviteEmail, inviteRole, setInviteRole,
+  inviteAuthMethod, setInviteAuthMethod,
   handleInviteMember, handleUpdateMemberRole, handleRemoveMember,
 }: TeamPageProps) {
   return (
@@ -47,11 +50,9 @@ export function TeamPage({
             <CardDescription>Administra quién tiene acceso a {currentStore?.name}</CardDescription>
           </div>
           <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
-            <DialogTrigger render={
-              <Button className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                <UserPlus size={18} className="mr-2" /> Invitar Miembro
-              </Button>
-            } />
+            <DialogTrigger render={<Button className="bg-indigo-600 hover:bg-indigo-700 text-white" />}>
+              <UserPlus size={18} className="mr-2" /> Invitar Miembro
+            </DialogTrigger>
             <DialogContent>
               <form onSubmit={handleInviteMember}>
                 <DialogHeader>
@@ -70,6 +71,35 @@ export function TeamPage({
                       onChange={e => setInviteEmail(e.target.value)}
                       required
                     />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Método de acceso</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setInviteAuthMethod('google')}
+                        className={`flex items-center justify-center gap-2 h-10 rounded-xl border-2 text-sm font-medium transition-all ${
+                          inviteAuthMethod === 'google'
+                            ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                        }`}
+                      >
+                        <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="" />
+                        Google
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInviteAuthMethod('email')}
+                        className={`flex items-center justify-center gap-2 h-10 rounded-xl border-2 text-sm font-medium transition-all ${
+                          inviteAuthMethod === 'email'
+                            ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                        }`}
+                      >
+                        <Mail size={14} />
+                        Email/Contraseña
+                      </button>
+                    </div>
                   </div>
                   <div className="grid gap-2">
                     <Label>Rol asignado</Label>
@@ -97,7 +127,7 @@ export function TeamPage({
               <TableRow>
                 <TableHead>Miembro</TableHead>
                 <TableHead>Rol</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableHead>Acceso</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -107,10 +137,10 @@ export function TeamPage({
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
-                        {member.displayName[0].toUpperCase()}
+                        {(member.displayName || member.email)[0].toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-medium text-sm text-slate-900">{member.displayName}</p>
+                        <p className="font-medium text-sm text-slate-900">{member.displayName || member.email.split('@')[0]}</p>
                         <p className="text-xs text-slate-500">{member.email}</p>
                       </div>
                     </div>
@@ -121,9 +151,17 @@ export function TeamPage({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-100">
-                      Activo
-                    </Badge>
+                    {member.authMethod === 'google' ? (
+                      <Badge variant="outline" className="gap-1.5 border-blue-200 text-blue-600 bg-blue-50">
+                        <img src="https://www.google.com/favicon.ico" className="w-3 h-3" alt="" />
+                        Google
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="gap-1.5 border-slate-200 text-slate-500">
+                        <Mail size={10} />
+                        Email
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     {member.email !== user?.email ? (

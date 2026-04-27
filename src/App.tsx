@@ -123,6 +123,7 @@ export default function App() {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<UserRole>("employee");
+  const [inviteAuthMethod, setInviteAuthMethod] = useState<'google' | 'email'>('email');
 
   // ─── Analytics ────────────────────────────────────────────────────
   const analytics = useMemo(() => {
@@ -787,12 +788,13 @@ export default function App() {
     if (!currentStore || !isAdmin) return;
     try {
       const memberId = inviteEmail.replace(/\./g, "_");
-      const memberData = { userId: "", storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], joinedAt: new Date().toISOString() };
+      const memberData = { userId: "", storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], joinedAt: new Date().toISOString(), authMethod: inviteAuthMethod };
       await setDoc(doc(db, "stores", currentStore.id, "members", memberId), memberData);
-      await setDoc(doc(db, "userInvitations", memberId), { storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], authMethod: 'email' });
+      await setDoc(doc(db, "userInvitations", memberId), { storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], authMethod: inviteAuthMethod });
       toast.success(`Invitación enviada a ${inviteEmail}`);
       setIsInviteDialogOpen(false);
       setInviteEmail("");
+      setInviteAuthMethod('email');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `stores/${currentStore.id}/members`);
     }
@@ -1420,6 +1422,8 @@ export default function App() {
                   setInviteEmail={setInviteEmail}
                   inviteRole={inviteRole}
                   setInviteRole={setInviteRole}
+                  inviteAuthMethod={inviteAuthMethod}
+                  setInviteAuthMethod={setInviteAuthMethod}
                   handleInviteMember={handleInviteMember}
                   handleUpdateMemberRole={handleUpdateMemberRole}
                   handleRemoveMember={handleRemoveMember}

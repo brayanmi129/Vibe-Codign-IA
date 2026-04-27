@@ -40,6 +40,7 @@ export interface StoreMember {
   displayName?: string;
   joinedAt?: string;
   branchId?: string;
+  authMethod?: 'google' | 'email';
 }
 
 export interface Product {
