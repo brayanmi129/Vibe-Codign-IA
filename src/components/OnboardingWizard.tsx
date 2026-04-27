@@ -1,25 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  ArrowRight,
-  ArrowLeft,
-  CheckCircle2,
-  Sparkles,
-  Plus,
-  Trash2,
-  ImagePlus,
-  Mail,
+  ArrowRight, ArrowLeft, CheckCircle2, Sparkles, Plus, Trash2,
+  ImagePlus, Mail, Store,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui/select';
 import { UserRole } from '../types';
 import { getContrastColor } from '../lib/utils';
@@ -58,6 +48,7 @@ export interface OnboardingData {
     authMethod: 'google' | 'email';
     password?: string;
   }[];
+  branches: { name: string; address?: string }[];
   aiDescription: string;
 }
 
@@ -72,8 +63,8 @@ const CATEGORIES = [
 
 const DEFAULT_BRANDING = COLOR_PRESETS[0];
 
-// 8 steps: 0=welcome, 1=name, 2=category, 3=branding, 4=admin, 5=ai, 6=employees, 7=launch
-const TOTAL_STEPS = 8;
+// Steps: 0=welcome, 1=name, 2=category, 3=branding, 4=admin, 5=ai, 6=employees, 7=branches, 8=launch
+const TOTAL_STEPS = 9;
 
 const slideVariants = {
   enter: (dir: number) => ({ opacity: 0, x: dir > 0 ? 48 : -48, filter: 'blur(6px)' }),
@@ -97,6 +88,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
     businessType: 'retail',
     branding: DEFAULT_BRANDING,
     employees: [],
+    branches: [],
     aiDescription: '',
     adminInfo: currentUser
       ? { displayName: currentUser.displayName || '', email: currentUser.email || '', authMethod: 'google' }
@@ -104,12 +96,11 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
   });
 
   const [newEmployee, setNewEmployee] = useState({
-    email: '',
-    role: 'employee' as UserRole,
-    displayName: '',
-    authMethod: 'email' as 'google' | 'email',
-    password: '',
+    email: '', role: 'employee' as UserRole, displayName: '',
+    authMethod: 'email' as 'google' | 'email', password: '',
   });
+
+  const [newBranch, setNewBranch] = useState({ name: '', address: '' });
 
   useEffect(() => {
     return () => { if (logoPreview) URL.revokeObjectURL(logoPreview); };
@@ -159,13 +150,23 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
     }
   };
 
-  const removeEmployee = (idx: number) => {
+  const removeEmployee = (idx: number) =>
     setData(prev => ({ ...prev, employees: prev.employees.filter((_, i) => i !== idx) }));
+
+  const handleAddBranch = () => {
+    if (!newBranch.name.trim()) return;
+    setData(prev => ({
+      ...prev,
+      branches: [...prev.branches, { name: newBranch.name.trim(), address: newBranch.address.trim() || undefined }],
+    }));
+    setNewBranch({ name: '', address: '' });
   };
+
+  const removeBranch = (idx: number) =>
+    setData(prev => ({ ...prev, branches: prev.branches.filter((_, i) => i !== idx) }));
 
   const firstName = (currentUser?.displayName || data.adminInfo?.displayName || '').split(' ')[0];
 
-  // Small AI comment bubble used across steps
   const AiMessage = ({ message }: { message: string }) => (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
@@ -311,14 +312,13 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                       </button>
                     ))}
                   </div>
-                  {/* Free-form description */}
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                       Cuéntame más{' '}
                       <span className="text-indigo-400 normal-case font-normal">(opcional, pero me ayuda mucho)</span>
                     </p>
                     <Textarea
-                      placeholder={`Ej: Vendemos ropa deportiva para mujer, principalmente en Instagram, con envíos a toda Colombia. Nuestro diferencial es la atención personalizada…`}
+                      placeholder="Ej: Vendemos ropa deportiva para mujer, principalmente en Instagram, con envíos a toda Colombia…"
                       value={data.aiDescription}
                       onChange={e => setData(prev => ({ ...prev, aiDescription: e.target.value }))}
                       rows={3}
@@ -335,7 +335,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                 </div>
               )}
 
-              {/* ── Step 3: Branding (logo + colors) ── */}
+              {/* ── Step 3: Branding ── */}
               {step === 3 && (
                 <div className="space-y-7">
                   <div className="space-y-3">
@@ -370,11 +370,9 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                         if (f) handleLogoFile(f);
                       }}
                       className={`relative flex flex-col items-center justify-center gap-3 h-28 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
-                        isDraggingLogo
-                          ? 'border-indigo-400 bg-indigo-50'
-                          : logoPreview
-                          ? 'border-indigo-300 bg-indigo-50/50'
-                          : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                        isDraggingLogo ? 'border-indigo-400 bg-indigo-50'
+                        : logoPreview ? 'border-indigo-300 bg-indigo-50/50'
+                        : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
                       }`}
                     >
                       {logoPreview ? (
@@ -408,18 +406,13 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                               isSelected ? 'border-slate-400 bg-slate-50' : 'border-slate-100 hover:border-slate-300'
                             }`}
                           >
-                            <div
-                              className="w-6 h-6 rounded-lg flex-shrink-0 shadow-sm"
-                              style={{ backgroundColor: preset.primaryColor }}
-                            />
+                            <div className="w-6 h-6 rounded-lg flex-shrink-0 shadow-sm" style={{ backgroundColor: preset.primaryColor }} />
                             <span className="text-xs font-semibold text-slate-600 truncate">{preset.name}</span>
                             {isSelected && <CheckCircle2 size={13} className="text-slate-500 ml-auto flex-shrink-0" />}
                           </button>
                         );
                       })}
                     </div>
-
-                    {/* Custom color picker */}
                     <div className="mt-3 flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                       <label className="flex items-center gap-2 cursor-pointer flex-1">
                         <div
@@ -441,49 +434,31 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                       <span className="text-xs font-mono text-slate-400">{data.branding.primaryColor}</span>
                     </div>
 
-                    {/* Font selection */}
                     <div className="mt-6">
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Estilo de Letra (Fuente)</p>
                       <Select
                         value={data.branding.fontFamily || FONT_PRESETS[0].value}
-                        onValueChange={(val) => setData(prev => ({ 
-                          ...prev, 
-                          branding: { ...prev.branding, fontFamily: val } 
-                        }))}
+                        onValueChange={(val) => setData(prev => ({ ...prev, branding: { ...prev.branding, fontFamily: val } }))}
                       >
                         <SelectTrigger className="w-full h-12 rounded-xl border-2 border-slate-100 bg-slate-50/50">
                           <SelectValue placeholder="Selecciona una fuente" />
                         </SelectTrigger>
                         <SelectContent className="max-h-[300px]">
                           {FONT_PRESETS.map(font => (
-                            <SelectItem 
-                              key={font.value} 
-                              value={font.value}
-                              style={{ fontFamily: font.value }}
-                            >
+                            <SelectItem key={font.value} value={font.value} style={{ fontFamily: font.value }}>
                               {font.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="mt-2 text-[10px] text-slate-400 font-medium italic">
-                        Esta fuente se aplicará a toda tu tienda.
-                      </p>
                     </div>
                   </div>
 
                   <div className="flex gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => go(1)}
-                      className="flex-1 h-12 rounded-xl border-2 text-slate-500 hover:text-slate-800"
-                    >
+                    <Button variant="outline" onClick={() => go(1)} className="flex-1 h-12 rounded-xl border-2 text-slate-500">
                       Saltar
                     </Button>
-                    <Button
-                      onClick={() => go(1)}
-                      className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white"
-                    >
+                    <Button onClick={() => go(1)} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white">
                       Continuar <ArrowRight size={16} className="ml-1" />
                     </Button>
                   </div>
@@ -504,15 +479,11 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                   </div>
 
                   {currentUser ? (
-                    /* ── Verified state ── */
                     <>
                       <div className="flex flex-col items-center gap-4 py-2">
                         <div className="w-20 h-20 rounded-full border-4 border-indigo-100 overflow-hidden bg-slate-100">
                           <img
-                            src={
-                              currentUser.photoURL ||
-                              `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.displayName || 'A')}&background=4f46e5&color=fff`
-                            }
+                            src={currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.displayName || 'A')}&background=4f46e5&color=fff`}
                             className="w-full h-full object-cover"
                             alt="Avatar"
                           />
@@ -525,16 +496,11 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                           <CheckCircle2 size={14} /> Cuenta verificada
                         </div>
                       </div>
-                      <Button
-                        onClick={() => go(1)}
-                        size="lg"
-                        className="w-full h-14 rounded-2xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-50"
-                      >
+                      <Button onClick={() => go(1)} size="lg" className="w-full h-14 rounded-2xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 shadow-lg">
                         Perfecto, continuar <ArrowRight size={18} className="ml-2" />
                       </Button>
                     </>
                   ) : adminAuthMethod === null ? (
-                    /* ── Method chooser ── */
                     <div className="space-y-3">
                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Elige cómo acceder</p>
                       <button
@@ -569,7 +535,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                       </button>
                     </div>
                   ) : adminAuthMethod === 'google' ? (
-                    /* ── Waiting for Google ── */
                     <div className="flex flex-col items-center gap-5 py-6">
                       {isGoogleLoading ? (
                         <>
@@ -602,7 +567,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                       </button>
                     </div>
                   ) : (
-                    /* ── Email form ── */
                     <div className="space-y-3">
                       <button
                         onClick={() => setAdminAuthMethod(null)}
@@ -614,27 +578,21 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                         placeholder="Tu nombre completo"
                         className="h-12 rounded-xl"
                         value={data.adminInfo?.displayName || ''}
-                        onChange={e =>
-                          setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, displayName: e.target.value, authMethod: 'email' } }))
-                        }
+                        onChange={e => setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, displayName: e.target.value, authMethod: 'email' } }))}
                       />
                       <Input
                         type="email"
                         placeholder="correo@empresa.com"
                         className="h-12 rounded-xl"
                         value={data.adminInfo?.email || ''}
-                        onChange={e =>
-                          setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, email: e.target.value, authMethod: 'email' } }))
-                        }
+                        onChange={e => setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, email: e.target.value, authMethod: 'email' } }))}
                       />
                       <Input
                         type="password"
                         placeholder="Contraseña (mín. 6 caracteres)"
                         className="h-12 rounded-xl"
                         value={data.adminInfo?.password || ''}
-                        onChange={e =>
-                          setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, password: e.target.value, authMethod: 'email' } }))
-                        }
+                        onChange={e => setData(prev => ({ ...prev, adminInfo: { ...prev.adminInfo!, password: e.target.value, authMethod: 'email' } }))}
                       />
                       <Button
                         onClick={() => go(1)}
@@ -649,13 +607,13 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                 </div>
               )}
 
-              {/* ── Step 5: AI description (optional) ── */}
+              {/* ── Step 5: AI description ── */}
               {step === 5 && (
                 <div className="space-y-6">
                   <AiMessage message={
                     data.aiDescription
                       ? `Ya me contaste algo sobre ${data.storeName}. Puedes ampliar la información aquí — cuanto más sepa, mejores análisis y recomendaciones podré darte.`
-                      : `Casi terminamos de conocernos. Cuéntame todo sobre ${data.storeName || 'tu negocio'}: qué vendes, a quién, cómo y dónde. Esta info es mi combustible para ayudarte.`
+                      : `Casi terminamos de conocernos. Cuéntame todo sobre ${data.storeName || 'tu negocio'}: qué vendes, a quién, cómo y dónde.`
                   } />
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Contexto IA</p>
@@ -670,30 +628,21 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                   <Textarea
                     autoFocus
                     rows={5}
-                    placeholder="Ej: Vendemos ropa deportiva para mujeres, tenemos bodega propia y vendemos principalmente en Instagram. Nuestros clientes son mujeres de 20-40 años. Hacemos envíos a todo Colombia…"
+                    placeholder="Ej: Vendemos ropa deportiva para mujeres, tenemos bodega propia y vendemos principalmente en Instagram…"
                     className="rounded-2xl border-slate-200 p-4 text-sm leading-relaxed resize-none focus:border-indigo-500 transition-all"
                     value={data.aiDescription}
                     onChange={e => setData(prev => ({ ...prev, aiDescription: e.target.value }))}
                   />
                   <div className="flex gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => go(1)}
-                      className="flex-1 h-12 rounded-xl border-2 text-slate-500 hover:text-slate-800"
-                    >
-                      Saltar
-                    </Button>
-                    <Button
-                      onClick={() => go(1)}
-                      className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white"
-                    >
+                    <Button variant="outline" onClick={() => go(1)} className="flex-1 h-12 rounded-xl border-2 text-slate-500">Saltar</Button>
+                    <Button onClick={() => go(1)} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white">
                       Continuar <ArrowRight size={16} className="ml-1" />
                     </Button>
                   </div>
                 </div>
               )}
 
-              {/* ── Step 6: Employees (optional) ── */}
+              {/* ── Step 6: Employees ── */}
               {step === 6 && (
                 <div className="space-y-6">
                   <div className="space-y-3">
@@ -720,7 +669,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                       value={newEmployee.email}
                       onChange={e => setNewEmployee(prev => ({ ...prev, email: e.target.value }))}
                     />
-                    {/* Auth method toggle */}
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -757,13 +705,8 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                       />
                     )}
                     <div className="flex gap-2 pt-1">
-                      <Select
-                        value={newEmployee.role}
-                        onValueChange={(v: any) => setNewEmployee(prev => ({ ...prev, role: v }))}
-                      >
-                        <SelectTrigger className="h-11 flex-1 rounded-xl">
-                          <SelectValue />
-                        </SelectTrigger>
+                      <Select value={newEmployee.role} onValueChange={(v: any) => setNewEmployee(prev => ({ ...prev, role: v }))}>
+                        <SelectTrigger className="h-11 flex-1 rounded-xl"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="admin">Admin</SelectItem>
                           <SelectItem value="employee">Empleado</SelectItem>
@@ -783,8 +726,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                     <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                       {data.employees.map((emp, idx) => (
                         <motion.div
-                          key={idx}
-                          layout
+                          key={idx} layout
                           initial={{ opacity: 0, scale: 0.95 }}
                           animate={{ opacity: 1, scale: 1 }}
                           className="flex items-center justify-between p-3 bg-slate-50 rounded-xl"
@@ -800,17 +742,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="secondary" className="text-[10px] capitalize">{emp.role}</Badge>
-                            <Badge variant="outline" className={`text-[10px] gap-1 ${emp.authMethod === 'google' ? 'border-blue-200 text-blue-600' : 'border-slate-200 text-slate-500'}`}>
-                              {emp.authMethod === 'google'
-                                ? <><img src="https://www.google.com/favicon.ico" className="w-2.5 h-2.5" alt="" />Google</>
-                                : <><Mail size={9} />Email</>}
-                            </Badge>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-rose-400 hover:text-rose-600"
-                              onClick={() => removeEmployee(idx)}
-                            >
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-400 hover:text-rose-600" onClick={() => removeEmployee(idx)}>
                               <Trash2 size={13} />
                             </Button>
                           </div>
@@ -819,25 +751,91 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                     </div>
                   )}
                   <div className="flex gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => go(1)}
-                      className="flex-1 h-12 rounded-xl border-2 text-slate-500 hover:text-slate-800"
-                    >
-                      Saltar
-                    </Button>
-                    <Button
-                      onClick={() => go(1)}
-                      className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white"
-                    >
+                    <Button variant="outline" onClick={() => go(1)} className="flex-1 h-12 rounded-xl border-2 text-slate-500">Saltar</Button>
+                    <Button onClick={() => go(1)} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white">
                       Continuar <ArrowRight size={16} className="ml-1" />
                     </Button>
                   </div>
                 </div>
               )}
 
-              {/* ── Step 7: Launch ── */}
+              {/* ── Step 7: Branches ── */}
               {step === 7 && (
+                <div className="space-y-6">
+                  <AiMessage message={`¡Ya casi! Si ${data.storeName} tiene varias sedes, locales o bodegas, agrégalas aquí. Así cada una tendrá su propio control de stock y ventas.`} />
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Sucursales</p>
+                    <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                      ¿Tienes más de<br />una ubicación?
+                    </h2>
+                    <p className="text-slate-400 text-sm">
+                      Cada sucursal tendrá stock independiente.{' '}
+                      <span className="text-indigo-500 font-medium">Opcional.</span>
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="Nombre (ej: Sede Centro, Bodega Norte)"
+                      className="h-11 rounded-xl"
+                      value={newBranch.name}
+                      onChange={e => setNewBranch(prev => ({ ...prev, name: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && handleAddBranch()}
+                    />
+                    <Input
+                      placeholder="Dirección (opcional)"
+                      className="h-11 rounded-xl"
+                      value={newBranch.address}
+                      onChange={e => setNewBranch(prev => ({ ...prev, address: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && handleAddBranch()}
+                    />
+                    <Button
+                      variant="outline"
+                      className="w-full h-11 rounded-xl gap-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                      onClick={handleAddBranch}
+                      disabled={!newBranch.name.trim()}
+                    >
+                      <Plus size={16} /> Agregar sucursal
+                    </Button>
+                  </div>
+
+                  {data.branches.length > 0 && (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {data.branches.map((branch, idx) => (
+                        <motion.div
+                          key={idx} layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="flex items-center justify-between p-3 bg-slate-50 rounded-xl"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                              <Store size={14} className="text-indigo-600" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold leading-none">{branch.name}</p>
+                              {branch.address && <p className="text-xs text-slate-400 mt-0.5">{branch.address}</p>}
+                            </div>
+                          </div>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-400 hover:text-rose-600 flex-shrink-0" onClick={() => removeBranch(idx)}>
+                            <Trash2 size={13} />
+                          </Button>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <Button variant="outline" onClick={() => go(1)} className="flex-1 h-12 rounded-xl border-2 text-slate-500">Saltar</Button>
+                    <Button onClick={() => go(1)} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white">
+                      Continuar <ArrowRight size={16} className="ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Step 8: Launch ── */}
+              {step === 8 && (
                 <div className="space-y-8 text-center">
                   <div className="space-y-4">
                     <motion.div
@@ -847,11 +845,9 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                       className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto shadow-2xl shadow-indigo-200 overflow-hidden"
                       style={{ backgroundColor: data.branding.primaryColor }}
                     >
-                      {logoPreview ? (
-                        <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
-                      ) : (
-                        <CheckCircle2 className="text-white" size={38} />
-                      )}
+                      {logoPreview
+                        ? <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
+                        : <CheckCircle2 className="text-white" size={38} />}
                     </motion.div>
                     <div className="space-y-2 pt-1">
                       <h2 className="text-3xl font-bold text-slate-900 leading-tight">
@@ -874,15 +870,12 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                           <span className="font-mono text-xs">{data.branding.primaryColor}</span>
                         </span>
                       )},
-                      { label: 'Color Destaque', value: (
-                        <span className="flex items-center gap-2 justify-end">
-                          <span className="w-4 h-4 rounded-full inline-block border border-slate-200" style={{ backgroundColor: data.branding.textAccentColor || data.branding.primaryColor }} />
-                          <span className="font-mono text-xs">{data.branding.textAccentColor || data.branding.primaryColor}</span>
-                        </span>
-                      )},
                       { label: 'Fuente', value: FONT_PRESETS.find(f => f.value === (data.branding.fontFamily || FONT_PRESETS[0].value))?.name },
                       { label: 'Logo', value: logoPreview ? '✓ Subido' : 'Sin logo' },
                       { label: 'Equipo', value: `${data.employees.length} miembro${data.employees.length !== 1 ? 's' : ''}` },
+                      { label: 'Sucursales', value: data.branches.length > 0
+                        ? `${data.branches.length} sucursal${data.branches.length !== 1 ? 'es' : ''}`
+                        : 'Sin sucursales' },
                     ].map(row => (
                       <div key={row.label} className="flex justify-between items-center">
                         <span className="text-xs text-slate-400 font-semibold uppercase tracking-wide">{row.label}</span>
@@ -895,7 +888,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                     onClick={() => onComplete(data)}
                     size="lg"
                     className="w-full h-14 rounded-2xl text-base font-semibold shadow-xl shadow-indigo-100 relative overflow-hidden transition-colors"
-                    style={{ 
+                    style={{
                       backgroundColor: data.branding.primaryColor,
                       color: getContrastColor(data.branding.primaryColor) === "white" ? "#ffffff" : "#0f172a"
                     }}

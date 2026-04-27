@@ -53,6 +53,7 @@ export interface Product {
   costPrice?: number;
   imageUrl?: string;
   quantity: number;
+  branchStock?: Record<string, number>;
   category: string;
   minStockLevel: number;
   lastUpdated: string;

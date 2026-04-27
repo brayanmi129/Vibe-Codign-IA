@@ -130,10 +130,19 @@ export default function App() {
   const [inviteAuthMethod, setInviteAuthMethod] = useState<'google' | 'email'>('email');
   const [invitePassword, setInvitePassword] = useState("");
 
+  // ─── Branch-aware product quantities ─────────────────────────────
+  // Products are store-wide; quantity is adjusted per active branch
+  const effectiveProducts = useMemo(() =>
+    activeBranchId
+      ? products.map(p => ({ ...p, quantity: p.branchStock?.[activeBranchId] ?? 0 }))
+      : products,
+    [products, activeBranchId]
+  );
+
   // ─── Analytics ────────────────────────────────────────────────────
   const analytics = useMemo<InventoryAnalytics>(() => {
     const scopedSales = activeBranchId ? sales.filter(s => s.branchId === activeBranchId) : sales;
-    const scopedProducts = activeBranchId ? products.filter(p => p.branchId === activeBranchId) : products;
+    const scopedProducts = effectiveProducts;
     const scopedExpenses = activeBranchId ? expenses.filter(e => e.branchId === activeBranchId) : expenses;
 
     const now = new Date();
@@ -213,7 +222,7 @@ export default function App() {
       netProfit,
       totalExpenses
     };
-  }, [products, sales, expenses, activeBranchId]);
+  }, [effectiveProducts, sales, expenses, activeBranchId]);
 
   const getDaysOfStock = (productId: string) => {
     const product = products.find(p => p.id === productId);
@@ -251,21 +260,20 @@ export default function App() {
   }, [sales]);
 
   const stats = useMemo<InventoryStats>(() => ({
-    totalProducts: products.length,
-    totalValue: products.reduce((acc, p) => acc + p.price * p.quantity, 0),
-    totalCostValue: products.reduce((acc, p) => acc + (p.costPrice || 0) * p.quantity, 0),
-    lowStockCount: products.filter(p => p.quantity > 0 && p.quantity <= p.minStockLevel).length,
-    outOfStockCount: products.filter(p => p.quantity === 0).length,
-  }), [products]);
+    totalProducts: effectiveProducts.length,
+    totalValue: effectiveProducts.reduce((acc, p) => acc + p.price * p.quantity, 0),
+    totalCostValue: effectiveProducts.reduce((acc, p) => acc + (p.costPrice || 0) * p.quantity, 0),
+    lowStockCount: effectiveProducts.filter(p => p.quantity > 0 && p.quantity <= p.minStockLevel).length,
+    outOfStockCount: effectiveProducts.filter(p => p.quantity === 0).length,
+  }), [effectiveProducts]);
 
   const categories = useMemo(() => ["all", ...Array.from(new Set(products.map(p => p.category)))], [products]);
 
-  const filteredProducts = useMemo(() => products.filter(p => {
+  const filteredProducts = useMemo(() => effectiveProducts.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === "all" || p.category === categoryFilter;
-    const matchesBranch = !activeBranchId || p.branchId === activeBranchId;
-    return matchesSearch && matchesCategory && matchesBranch;
-  }), [products, searchTerm, categoryFilter, activeBranchId]);
+    return matchesSearch && matchesCategory;
+  }), [effectiveProducts, searchTerm, categoryFilter]);
 
   // ─── Effects ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -490,6 +498,18 @@ export default function App() {
       }
       await setDoc(doc(db, "users", activeUser.uid, "userStores", storeId), { role: "admin" });
 
+      // Create branches
+      for (const branchData of onboardingData.branches) {
+        const branchId = `branch_${Math.random().toString(36).substr(2, 9)}`;
+        await setDoc(doc(db, "stores", storeId, "branches", branchId), {
+          id: branchId,
+          tenantId: storeId,
+          name: branchData.name,
+          address: branchData.address || '',
+          createdAt: new Date().toISOString(),
+        });
+      }
+
       if (onboardingData.logoFile) {
         try {
           const logoUrl = await uploadStoreLogo(storeId, onboardingData.logoFile);
@@ -641,6 +661,32 @@ export default function App() {
     } catch { toast.error("Error al cerrar sesión"); }
   };
 
+  const handleImportProducts = async (rows: any[]) => {
+    if (!currentStore || !canEdit) return;
+    let count = 0;
+    for (const row of rows) {
+      try {
+        const id = Math.random().toString(36).substr(2, 9);
+        const newProduct: Product = {
+          id,
+          storeId: currentStore.id,
+          name: row.name,
+          code: row.code || generateProductCode(row.name),
+          brand: row.brand || 'Genérico',
+          price: Number(row.price) || 0,
+          costPrice: row.costPrice ? Number(row.costPrice) : undefined,
+          quantity: Number(row.quantity) || 0,
+          category: row.category || 'General',
+          minStockLevel: Number(row.minStockLevel) || 5,
+          lastUpdated: new Date().toISOString(),
+        };
+        await setDoc(doc(db, "stores", currentStore.id, "products", id), newProduct);
+        count++;
+      } catch { /* skip invalid rows */ }
+    }
+    toast.success(`${count} producto${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} correctamente`);
+  };
+
   const handleChangePassword = async (currentPassword: string, newPassword: string) => {
     const currentUser = auth.currentUser;
     if (!currentUser || !currentUser.email) throw new Error("No hay sesión activa");
@@ -753,7 +799,10 @@ export default function App() {
     if (cart.length === 0) { toast.error("El carrito está vacío"); return; }
     for (const item of cart) {
       const product = products.find(p => p.id === item.productId);
-      if (!product || product.quantity < item.quantity) { toast.error(`Stock insuficiente para ${item.productName}`); return; }
+      const available = activeBranchId
+        ? (product?.branchStock?.[activeBranchId] ?? 0)
+        : (product?.quantity ?? 0);
+      if (!product || available < item.quantity) { toast.error(`Stock insuficiente para ${item.productName}`); return; }
     }
     setIsCustomerFormOpen(true);
   };
@@ -784,7 +833,15 @@ export default function App() {
       for (const item of cart) {
         const product = products.find(p => p.id === item.productId);
         if (product) {
-          await updateDoc(doc(db, "stores", currentStore.id, "products", product.id), { quantity: product.quantity - item.quantity, lastUpdated: new Date().toISOString() });
+          const stockUpdate: any = {
+            quantity: Math.max(0, product.quantity - item.quantity),
+            lastUpdated: new Date().toISOString(),
+          };
+          if (activeBranchId) {
+            const branchQty = product.branchStock?.[activeBranchId] ?? 0;
+            stockUpdate[`branchStock.${activeBranchId}`] = Math.max(0, branchQty - item.quantity);
+          }
+          await updateDoc(doc(db, "stores", currentStore.id, "products", product.id), stockUpdate);
         }
       }
 
@@ -832,7 +889,12 @@ export default function App() {
       const newRestock: RestockRecord = { id: restockId, storeId: currentStore.id, productId: restockProductId, productName: product.name, quantity: qty, date: new Date().toISOString(), userId: user.uid };
       if (activeBranchId) newRestock.branchId = activeBranchId;
       await setDoc(doc(db, "stores", currentStore.id, "restocks", restockId), newRestock);
-      await updateDoc(doc(db, "stores", currentStore.id, "products", product.id), { quantity: product.quantity + qty, lastUpdated: new Date().toISOString() });
+      const restockUpdate: any = { quantity: product.quantity + qty, lastUpdated: new Date().toISOString() };
+      if (activeBranchId) {
+        const branchQty = product.branchStock?.[activeBranchId] ?? 0;
+        restockUpdate[`branchStock.${activeBranchId}`] = branchQty + qty;
+      }
+      await updateDoc(doc(db, "stores", currentStore.id, "products", product.id), restockUpdate);
       setRestockProductId("");
       setRestockQuantity("");
       toast.success(`Se han añadido ${qty} unidades a ${product.name}`);
@@ -884,11 +946,14 @@ export default function App() {
 
   const addToCart = (product: Product, quantity: number) => {
     if (quantity <= 0) return;
-    if (quantity > product.quantity) { toast.error(`Stock insuficiente para ${product.name}`); return; }
+    const available = activeBranchId
+      ? (product.branchStock?.[activeBranchId] ?? 0)
+      : product.quantity;
+    if (quantity > available) { toast.error(`Stock insuficiente para ${product.name}`); return; }
     const existingItem = cart.find(item => item.productId === product.id);
     if (existingItem) {
       const newQuantity = existingItem.quantity + quantity;
-      if (newQuantity > product.quantity) { toast.error(`Stock insuficiente para ${product.name}`); return; }
+      if (newQuantity > available) { toast.error(`Stock insuficiente para ${product.name}`); return; }
       setCart(cart.map(item => item.productId === product.id ? { ...item, quantity: newQuantity, totalPrice: newQuantity * item.unitPrice } : item));
     } else {
       setCart([...cart, { productId: product.id, productName: product.name, quantity, unitPrice: product.price, totalPrice: quantity * product.price }]);
@@ -1327,6 +1392,7 @@ export default function App() {
                   setEditingProduct={setEditingProduct}
                   handleAddProduct={handleAddProduct}
                   handleDeleteProduct={handleDeleteProduct}
+                  onImportProducts={handleImportProducts}
                 />
               )}
               {activeTab === "inventory" && (
@@ -1347,6 +1413,8 @@ export default function App() {
                   restocks={restocks}
                   handleRestock={handleRestock}
                   setActiveTab={setActiveTab}
+                  branches={branches}
+                  activeBranchId={activeBranchId}
                 />
               )}
               {activeTab === "team" && isAdmin && (

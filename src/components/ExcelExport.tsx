@@ -4,6 +4,17 @@ import { Button } from './ui/button';
 import { FileSpreadsheet } from 'lucide-react';
 import { SaleRecord, Product } from '../types';
 
+export function downloadProductTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Nombre', 'Marca', 'Código', 'Categoría', 'Precio', 'Costo', 'Stock', 'Stock Mínimo'],
+    ['Camiseta Básica', 'Nike', 'CAM001', 'Ropa', 45000, 28000, 30, 5],
+    ['Pantalón Jean', 'Levi\'s', 'PAN002', 'Ropa', 120000, 75000, 15, 3],
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Productos');
+  XLSX.writeFile(wb, 'plantilla_productos.xlsx');
+}
+
 interface ExcelExportProps {
   data: any[];
   fileName: string;

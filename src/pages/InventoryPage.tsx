@@ -9,9 +9,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RefreshCw, Package, History, Calendar, BrainCircuit, Plus, Search, AlertTriangle } from "lucide-react";
+import { RefreshCw, Package, History, Calendar, BrainCircuit, Plus, Search, AlertTriangle, Store } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
-import { Product, InventoryStats, RestockRecord } from "@/types";
+import { Product, InventoryStats, RestockRecord, Branch } from "@/types";
 
 interface InventoryPageProps {
   inventoryTab: "status" | "restock";
@@ -30,13 +30,19 @@ interface InventoryPageProps {
   restocks: RestockRecord[];
   handleRestock: () => void;
   setActiveTab: (tab: string) => void;
+  branches: Branch[];
+  activeBranchId: string | null;
 }
 
 export function InventoryPage({
   inventoryTab, setInventoryTab, filteredProducts, products, stats, searchTerm, setSearchTerm,
   getDaysOfStock, getRestockSuggestion, restockProductId, setRestockProductId,
   restockQuantity, setRestockQuantity, restocks, handleRestock, setActiveTab,
+  branches, activeBranchId,
 }: InventoryPageProps) {
+  const activeBranch = branches.find(b => b.id === activeBranchId);
+  const hasBranches = branches.length > 0;
+
   return (
     <motion.div
       key="inventory"
@@ -45,13 +51,27 @@ export function InventoryPage({
       exit={{ opacity: 0, scale: 0.98 }}
       className="space-y-6"
     >
+      {/* Branch context banner */}
+      {hasBranches && (
+        <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border ${
+          activeBranch
+            ? 'bg-indigo-50 border-indigo-100 text-indigo-700'
+            : 'bg-slate-50 border-slate-100 text-slate-600'
+        }`}>
+          <Store size={14} />
+          {activeBranch
+            ? <>Viendo stock de <strong className="ml-1">{activeBranch.name}</strong></>
+            : <>Viendo <strong className="mx-1">stock total</strong> de todas las sucursales</>}
+        </div>
+      )}
+
       <Tabs value={inventoryTab} onValueChange={(v: any) => setInventoryTab(v)} className="w-full">
         <TabsList className="bg-slate-100 p-1 rounded-xl mb-6">
           <TabsTrigger value="status" className="rounded-lg px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Package size={16} className="mr-2" /> Estado de Stock
           </TabsTrigger>
           <TabsTrigger value="restock" className="rounded-lg px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            <RefreshCw size={16} className="mr-2" /> Reposiciones (Restock)
+            <RefreshCw size={16} className="mr-2" /> Reposiciones
           </TabsTrigger>
         </TabsList>
 
@@ -79,17 +99,17 @@ export function InventoryPage({
           <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
             <CardHeader className="pb-4 border-b border-slate-100">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <CardTitle className="text-lg font-bold">Resumen de Existencias</CardTitle>
-                <div className="flex items-center gap-3">
-                  <div className="relative max-w-xs">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <Input
-                      placeholder="Filtrar stock..."
-                      className="pl-9 h-9 bg-slate-50 border-slate-200"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
+                <CardTitle className="text-lg font-bold">
+                  {activeBranch ? `Stock — ${activeBranch.name}` : 'Resumen de Existencias'}
+                </CardTitle>
+                <div className="relative max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <Input
+                    placeholder="Filtrar stock..."
+                    className="pl-9 h-9 bg-slate-50 border-slate-200"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
                 </div>
               </div>
             </CardHeader>
@@ -101,7 +121,13 @@ export function InventoryPage({
                       <TableHead className="font-semibold">Código</TableHead>
                       <TableHead className="font-semibold">Producto</TableHead>
                       <TableHead className="font-semibold">Marca</TableHead>
-                      <TableHead className="font-semibold">Stock Actual</TableHead>
+                      <TableHead className="font-semibold">
+                        {activeBranch ? `Stock (${activeBranch.name})` : 'Stock Total'}
+                      </TableHead>
+                      {/* Branch distribution column — only for admin without branch filter */}
+                      {hasBranches && !activeBranchId && (
+                        <TableHead className="font-semibold">Por Sucursal</TableHead>
+                      )}
                       <TableHead className="font-semibold">Predicción</TableHead>
                       <TableHead className="font-semibold">Estado</TableHead>
                       <TableHead className="text-right font-semibold">Acciones</TableHead>
@@ -123,6 +149,26 @@ export function InventoryPage({
                               <span className="text-slate-400 text-xs">ud.</span>
                             </div>
                           </TableCell>
+                          {/* Per-branch stock breakdown for admin */}
+                          {hasBranches && !activeBranchId && (
+                            <TableCell>
+                              {product.branchStock && Object.keys(product.branchStock).length > 0 ? (
+                                <div className="flex flex-col gap-0.5">
+                                  {branches.map(b => {
+                                    const qty = product.branchStock?.[b.id] ?? 0;
+                                    return (
+                                      <span key={b.id} className="text-[11px] text-slate-500 flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block flex-shrink-0" />
+                                        {b.name}: <strong className="text-slate-700 ml-0.5">{qty}</strong>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-slate-300 italic">Sin asignar</span>
+                              )}
+                            </TableCell>
+                          )}
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Calendar size={14} className="text-slate-400" />
@@ -156,6 +202,13 @@ export function InventoryPage({
                         </TableRow>
                       );
                     })}
+                    {filteredProducts.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={hasBranches && !activeBranchId ? 8 : 7} className="h-32 text-center text-slate-400 italic">
+                          No se encontraron productos.
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -168,7 +221,11 @@ export function InventoryPage({
             <Card className="lg:col-span-1 bg-white border-slate-200 shadow-sm h-fit">
               <CardHeader>
                 <CardTitle className="text-lg font-bold">Nueva Entrada</CardTitle>
-                <CardDescription>Registra el ingreso de mercancía al almacén.</CardDescription>
+                <CardDescription>
+                  {activeBranch
+                    ? <>Ingreso de mercancía a <strong>{activeBranch.name}</strong></>
+                    : 'Registra el ingreso de mercancía al almacén.'}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -176,15 +233,15 @@ export function InventoryPage({
                   <Select value={restockProductId} onValueChange={setRestockProductId}>
                     <SelectTrigger id="restock-product" className="bg-slate-50 border-slate-200">
                       <SelectValue placeholder="Seleccionar producto">
-                        {restockProductId && products.find(p => p.id === restockProductId) ? (
-                          `${products.find(p => p.id === restockProductId)?.name} - ${products.find(p => p.id === restockProductId)?.code}`
-                        ) : "Seleccionar producto"}
+                        {restockProductId && products.find(p => p.id === restockProductId)
+                          ? `${products.find(p => p.id === restockProductId)?.name} - ${products.find(p => p.id === restockProductId)?.code}`
+                          : "Seleccionar producto"}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {products.map(p => (
                         <SelectItem key={p.id} value={p.id}>
-                          {p.name} ({p.brand}) - {p.code} ({p.quantity} en stock)
+                          {p.name} ({p.brand}) — {p.code} ({p.quantity} en stock)
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -236,7 +293,8 @@ export function InventoryPage({
                   className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100"
                   onClick={handleRestock}
                 >
-                  <Plus size={16} className="mr-2" /> Registrar Entrada
+                  <Plus size={16} className="mr-2" />
+                  Registrar Entrada{activeBranch ? ` — ${activeBranch.name}` : ''}
                 </Button>
               </CardContent>
             </Card>
@@ -257,12 +315,14 @@ export function InventoryPage({
                         <TableRow>
                           <TableHead>Producto</TableHead>
                           <TableHead>Fecha y Hora</TableHead>
+                          {hasBranches && <TableHead>Sucursal</TableHead>}
                           <TableHead className="text-right">Cantidad</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {restocks.map((r) => {
                           const product = products.find(p => p.id === r.productId);
+                          const branch = branches.find(b => b.id === r.branchId);
                           return (
                             <TableRow key={r.id} className="hover:bg-slate-50/50 transition-colors">
                               <TableCell className="font-medium text-slate-900">{product?.name || "Desconocido"}</TableCell>
@@ -272,17 +332,24 @@ export function InventoryPage({
                                   {new Date(r.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                                 </div>
                               </TableCell>
+                              {hasBranches && (
+                                <TableCell>
+                                  {branch ? (
+                                    <Badge variant="outline" className="text-[10px]">{branch.name}</Badge>
+                                  ) : (
+                                    <span className="text-xs text-slate-300">—</span>
+                                  )}
+                                </TableCell>
+                              )}
                               <TableCell className="text-right">
-                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 font-bold">
-                                  +{r.quantity}
-                                </Badge>
+                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 font-bold">+{r.quantity}</Badge>
                               </TableCell>
                             </TableRow>
                           );
                         })}
                         {restocks.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={3} className="h-48 text-center text-slate-400 italic">
+                            <TableCell colSpan={hasBranches ? 4 : 3} className="h-48 text-center text-slate-400 italic">
                               No hay registros de entradas recientes.
                             </TableCell>
                           </TableRow>
