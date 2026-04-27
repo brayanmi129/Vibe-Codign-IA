@@ -84,7 +84,6 @@ export interface SaleRecord {
   totalAmount: number;
   date: string;
   userId: string;
-  // 🆕 NUEVOS CAMPOS PARA FACTURACIÓN
   customer?: Customer;
   subtotal?: number;
   taxRate?: number;
@@ -92,6 +91,7 @@ export interface SaleRecord {
   invoiceNumber?: string;
   invoicePdfUrl?: string;
   emailSent?: boolean;
+  payments?: PaymentRecord[];   // 🆕 AÑADIR ESTA LÍNEA
 }
 
 export interface RestockRecord {
@@ -173,4 +173,19 @@ export interface TempStoreSettings {
     textAccentColor?: string;
     fontFamily?: string;
   };
+}
+export type PaymentMethod = 'efectivo' | 'tarjeta' | 'transferencia';
+
+export interface PaymentRecord {
+  id: string;
+  method: PaymentMethod;
+  amount: number;                 // en pesos colombianos (entero)
+  // Campos opcionales según el método
+  lastFourDigits?: string;        // tarjeta
+  expiryDate?: string;            // tarjeta (formato MM/YY)
+  cardType?: 'debito' | 'credito';// tarjeta
+  bankId?: string;                // tarjeta + transferencia
+  bankName?: string;              // tarjeta + transferencia
+  transferReference?: string;     // transferencia
+  createdAt: string;              // ISO
 }
