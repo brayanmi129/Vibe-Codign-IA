@@ -68,7 +68,7 @@ export function LoginPage({
               transition={{ delay: 0.2 }}
             >
               <h2 className="text-5xl font-black text-white leading-tight tracking-tight">
-                Gestiona tu inventario <br /> 
+                Gestiona tu Negocio <br /> 
                 <span className="text-indigo-200">con inteligencia real.</span>
               </h2>
             </motion.div>
