@@ -115,6 +115,13 @@ service cloud.firestore {
       }
     }
 
+    // ─── User invitations ─────────────────────────────────────────────
+    // Key = email.replace(/\./g, '_'). Written by store admins, read/deleted by the invited user.
+    match /userInvitations/{inviteKey} {
+      allow read, delete: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
     // ─── User profiles ────────────────────────────────────────────────
     match /users/{userId} {
       allow read, write: if
