@@ -7,11 +7,19 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, ShoppingCart, DollarSign, TrendingUp, Download } from "lucide-react";
+import { Calendar, ShoppingCart, DollarSign, TrendingUp, Download, Eye, MapPin, Phone, User as UserIcon } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency } from "@/lib/formatters";
 import { downloadInvoicePdf } from "@/lib/invoiceService";
 import { SaleRecord, Branch, Store } from "@/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 
 interface SalesPageProps {
   sales: SaleRecord[];
@@ -28,6 +36,8 @@ export function SalesPage({
   sales, salesDateFilter, setSalesDateFilter, salesRangeType, setSalesRangeType,
   activeBranchId, branches, currentStore,
 }: SalesPageProps) {
+  const [selectedReceipt, setSelectedReceipt] = React.useState<SaleRecord | null>(null);
+
   const filteredSales = sales.filter(s => {
     const saleDate = new Date(s.date);
     const filterDate = new Date(salesDateFilter);
@@ -141,7 +151,7 @@ export function SalesPage({
                       <TableHead className="font-semibold">Hora</TableHead>
                       <TableHead className="font-semibold">Cant.</TableHead>
                       <TableHead className="text-right font-semibold">Total</TableHead>
-                      <TableHead className="text-center font-semibold">PDF</TableHead>
+                      <TableHead className="text-center font-semibold">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -197,23 +207,32 @@ export function SalesPage({
                               {formatCurrency(sale.totalAmount)}
                             </TableCell>
                             <TableCell className="text-center">
-                              {sale.customer ? (
+                              <div className="flex items-center justify-center gap-1">
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
-                                  title={`Descargar ${sale.invoiceNumber || 'factura'}`}
-                                  onClick={() => downloadInvoicePdf({
-                                    sale,
-                                    store: currentStore,
-                                    customer: sale.customer!,
-                                  })}
+                                  className="h-7 w-7 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                                  onClick={() => setSelectedReceipt(sale)}
+                                  title="Ver Recibo Digital"
                                 >
-                                  <Download size={14} />
+                                  <Eye size={14} />
                                 </Button>
-                              ) : (
-                                <span className="text-slate-300 text-xs">—</span>
-                              )}
+                                {sale.customer && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                    title={`Descargar ${sale.invoiceNumber || 'factura'}`}
+                                    onClick={() => downloadInvoicePdf({
+                                      sale,
+                                      store: currentStore,
+                                      customer: sale.customer!,
+                                    })}
+                                  >
+                                    <Download size={14} />
+                                  </Button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -284,6 +303,97 @@ export function SalesPage({
           </Card>
         )}
       </div>
+
+      <Dialog open={!!selectedReceipt} onOpenChange={(open) => !open && setSelectedReceipt(null)}>
+        <DialogContent className="sm:max-w-[380px] p-0 border-none bg-slate-50 overflow-hidden">
+          {selectedReceipt && (
+            <div className="bg-white m-3 rounded-2xl shadow-sm overflow-hidden flex flex-col border border-slate-100">
+              <div className="bg-slate-900 p-6 text-white text-center space-y-2 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10 rotate-12">
+                  <ShoppingCart size={80} />
+                </div>
+                <h3 className="text-lg font-black tracking-tighter uppercase">{currentStore.name}</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Recibo de Venta</p>
+                <div className="inline-block px-3 py-1 bg-white/10 rounded-full text-[10px] font-mono">
+                  {selectedReceipt.invoiceNumber || `#${selectedReceipt.id.slice(-8).toUpperCase()}`}
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="space-y-3">
+                  <div className="flex justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    <span>Descripción</span>
+                    <span>Total</span>
+                  </div>
+                  <Separator className="bg-slate-100" />
+                  <div className="space-y-4">
+                    {selectedReceipt.items.map((item, i) => (
+                      <div key={i} className="flex justify-between items-start gap-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-slate-900 truncate">{item.productName}</p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">
+                            {item.quantity} x {formatCurrency(item.unitPrice)}
+                          </p>
+                        </div>
+                        <p className="text-sm font-black text-slate-900">{formatCurrency(item.totalPrice)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-2xl space-y-2 border border-slate-100">
+                  <div className="flex justify-between items-center text-xs text-slate-500 font-medium tracking-tight">
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(selectedReceipt.subtotal || selectedReceipt.totalAmount / (1 + (selectedReceipt.taxRate || 0)))}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-slate-500 font-medium tracking-tight">
+                    <span>IVA (19%)</span>
+                    <span>{formatCurrency(selectedReceipt.taxAmount || 0)}</span>
+                  </div>
+                  <Separator className="bg-slate-200/50 my-1" />
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-black uppercase text-slate-900">Total</span>
+                    <span className="text-xl font-black text-indigo-600 tracking-tighter">{formatCurrency(selectedReceipt.totalAmount)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <UserIcon size={12} className="shrink-0" />
+                    <p className="text-[10px] font-bold truncate uppercase tracking-tight">
+                      {selectedReceipt.customer?.fullName || "Cliente Anónimo"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <Calendar size={12} className="shrink-0" />
+                    <p className="text-[10px] font-bold uppercase tracking-tight">
+                      {new Date(selectedReceipt.date).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-4 text-center border-t border-slate-100">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4">¡Gracias por tu compra!</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1 rounded-xl h-10 text-[11px] font-bold uppercase border-slate-200">Compartir</Button>
+                  <Button 
+                    variant="default" 
+                    className="flex-1 bg-slate-900 text-white rounded-xl h-10 text-[11px] font-bold uppercase"
+                    onClick={() => {
+                      if (selectedReceipt.customer) {
+                        downloadInvoicePdf({ sale: selectedReceipt, store: currentStore, customer: selectedReceipt.customer });
+                      }
+                    }}
+                  >
+                    PDF
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

@@ -108,6 +108,11 @@ service cloud.firestore {
         allow read: if hasViewerRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
         allow write: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
       }
+
+      match /expenses/{expenseId} {
+        allow read: if hasViewerRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+      }
     }
 
     // ─── User profiles ────────────────────────────────────────────────

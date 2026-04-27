@@ -107,8 +107,30 @@ export interface RestockRecord {
 export interface InventoryStats {
   totalProducts: number;
   totalValue: number;
+  totalCostValue: number; // Nuevo: valor total a precio de costo
   lowStockCount: number;
   outOfStockCount: number;
+}
+
+export interface Expense {
+  id: string;
+  storeId: string;
+  category: string;
+  amount: number;
+  description: string;
+  date: string;
+  userId: string;
+}
+
+export interface InventoryAnalytics {
+  todayRevenue: number;
+  thisWeekRevenue: number;
+  revenueChange: number;
+  weekChange: number;
+  topByQty: { id: string; name: string; category: string; totalQty: number; totalRev: number }[];
+  notifications: { id: string; type: string; title: string; message: string }[];
+  netProfit?: number; // Nueva utilidad neta
+  totalExpenses?: number; // Nuevos gastos totales
 }
 
 export interface AIInsight {

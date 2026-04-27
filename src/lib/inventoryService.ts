@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Product, SaleRecord, AIInsight } from "../types";
+import { Product, SaleRecord, AIInsight, Expense, InventoryAnalytics, InventoryStats } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -70,7 +70,7 @@ Reglas de color:
 
 // ─── Chat Assistant ────────────────────────────────────────────────
 
-function prepareBusinessContext(products: Product[], sales: SaleRecord[], storeDescription?: string): string {
+function prepareBusinessContext(products: Product[], sales: SaleRecord[], expenses: Expense[] = [], storeDescription?: string): string {
   const now = new Date();
   const last7 = new Date(now); last7.setDate(now.getDate() - 7);
   const last30 = new Date(now); last30.setDate(now.getDate() - 30);
@@ -87,6 +87,20 @@ function prepareBusinessContext(products: Product[], sales: SaleRecord[], storeD
   const revenue30d = monthlySales.reduce((acc, s) => acc + s.totalAmount, 0);
   const revenueToday = todaySales.reduce((acc, s) => acc + s.totalAmount, 0);
   const revenueYesterday = yesterdaySales.reduce((acc, s) => acc + s.totalAmount, 0);
+
+  // Expense analysis
+  const expensesToday = expenses.filter(e => e.date.startsWith(todayStr)).reduce((acc, e) => acc + e.amount, 0);
+  const expenses7d = expenses.filter(e => new Date(e.date) >= last7).reduce((acc, e) => acc + e.amount, 0);
+  
+  // Basic profit estimate (revenue - product cost - expenses)
+  const totalCostOfProductsSold = sales.reduce((acc, sale) => {
+    return acc + sale.items.reduce((itemAcc, item) => {
+      const p = products.find(prod => prod.id === item.productId);
+      return itemAcc + (item.quantity * (p?.costPrice || 0));
+    }, 0);
+  }, 0);
+  
+  const netProfitTotal = sales.reduce((acc, s) => acc + s.totalAmount, 0) - totalCostOfProductsSold - expenses.reduce((acc, e) => acc + e.amount, 0);
 
   const lowStock = products.filter(p => p.quantity > 0 && p.quantity <= p.minStockLevel);
   const outOfStock = products.filter(p => p.quantity === 0);
@@ -126,16 +140,17 @@ Descripción: ${storeDescription || "Tienda general"}
 Fecha/hora: ${now.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 
 📦 INVENTARIO:
-- Productos activos: ${products.length} (valor total: $${totalInventoryValue.toLocaleString('es-CO')} COP)
+- Productos activos: ${products.length} (valor total PVP: $${totalInventoryValue.toLocaleString('es-CO')} COP)
 - Stock bajo (≤ mínimo): ${lowStock.length} → ${lowStock.map(p => `${p.name} (${p.quantity} restantes, mín: ${p.minStockLevel})`).join(', ') || 'ninguno'}
 - Agotados: ${outOfStock.length} → ${outOfStock.map(p => p.name).join(', ') || 'ninguno'}
 - Sin ventas esta semana: ${deadProducts.join(', ') || 'ninguno'}
 
-💰 VENTAS:
-- Hoy: $${revenueToday.toLocaleString('es-CO')} COP (${todaySales.length} transacciones)
-- Ayer: $${revenueYesterday.toLocaleString('es-CO')} COP (${yesterdaySales.length} transacciones)
-- Últimos 7 días: $${revenue7d.toLocaleString('es-CO')} COP (${recentSales.length} transacciones)
-- Últimos 30 días: $${revenue30d.toLocaleString('es-CO')} COP (${monthlySales.length} transacciones)
+💰 VENTAS Y FINANZAS:
+- Hoy (Ingresos): $${revenueToday.toLocaleString('es-CO')} COP (${todaySales.length} transacciones)
+- Hoy (Gastos): $${expensesToday.toLocaleString('es-CO')} COP
+- Ayer (Ingresos): $${revenueYesterday.toLocaleString('es-CO')} COP
+- Últimos 7 días: $${revenue7d.toLocaleString('es-CO')} COP
+- Utilidad Neta Total: $${netProfitTotal.toLocaleString('es-CO')} COP
 - Ticket promedio: $${Math.round(avgSaleValue).toLocaleString('es-CO')} COP
 - Día más activo: ${busiestDay}
 - Top 5 por ingresos: ${topProducts.join(' | ') || 'sin ventas'}
@@ -153,7 +168,8 @@ export async function askAIAssistant(
   products: Product[],
   sales: SaleRecord[],
   storeDescription?: string,
-  history: ChatMessage[] = []
+  history: ChatMessage[] = [],
+  expenses: Expense[] = []
 ): Promise<string> {
   if (!process.env.GEMINI_API_KEY) {
     return "⚠️ La IA no está configurada. Agrega tu GEMINI_API_KEY en el panel de Secrets.";
@@ -175,7 +191,7 @@ FORMATO:
 - Si hay múltiples problemas, los priorizas por impacto en el negocio.
 - Termina con UNA pregunta de seguimiento relevante cuando aplique.
 
-${prepareBusinessContext(products, sales, storeDescription)}`;
+${prepareBusinessContext(products, sales, expenses, storeDescription)}`;
 
   const contents = [
     ...history.map(msg => ({
@@ -199,6 +215,37 @@ ${prepareBusinessContext(products, sales, storeDescription)}`;
     console.error("AI chat error:", error);
     if (error?.message?.includes("API_KEY")) return "⚠️ API Key inválida o no configurada.";
     return "Hubo un error al contactar la IA. Verifica tu conexión e intenta de nuevo.";
+  }
+}
+
+export async function analyzeProductImage(imageBase64: string): Promise<Partial<Product> | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+
+  const prompt = `Analiza esta imagen de un producto para un sistema de inventario. 
+Extrae la siguiente información y devuélvela SOLO en formato JSON:
+{
+  "name": "Nombre sugerido del producto",
+  "brand": "Marca (si es visible)",
+  "category": "Categoría (ej: Bebidas, Snacks, Electrónica, Ropa, etc.)",
+  "price": 0, // Precio sugerido al consumidor (un número estimado si es común)
+  "minStockLevel": 5, // Nivel mínimo sugerido
+  "description": "Breve descripción de lo que ves"
+}
+Si no estás seguro de algo, deja el campo vacío o con un valor predeterminado coherente.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [
+        { text: prompt },
+        { inlineData: { mimeType: "image/jpeg", data: imageBase64 } }
+      ],
+      config: { responseMimeType: "application/json" },
+    });
+    return JSON.parse(response.text || "{}") as Partial<Product>;
+  } catch (error) {
+    console.error("Vision Analysis Error:", error);
+    return null;
   }
 }
 

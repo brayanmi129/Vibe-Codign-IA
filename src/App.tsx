@@ -7,7 +7,7 @@ import * as React from "react";
 import { useState, useEffect, useMemo } from "react";
 import {
   LayoutDashboard, Package, AlertTriangle, Plus, Edit2,
-  BrainCircuit, Menu, X, ShoppingCart, RefreshCw,
+  BrainCircuit, Menu, X, ShoppingCart, RefreshCw, Wallet
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ import {
 } from "./lib/firebase";
 import {
   Product, SaleItem, SaleRecord, InventoryStats, RestockRecord,
-  Store, UserRole, StoreMember, Branch, TempStoreSettings,
+  Store, UserRole, StoreMember, Branch, TempStoreSettings, Expense, InventoryAnalytics
 } from "./types";
 import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus, Settings, ChevronRight } from "lucide-react";
 import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
@@ -49,7 +49,7 @@ import { checkIsSuperAdmin } from "./lib/superAdminService";
 import { getContrastColor } from "./lib/utils";
 import { SuperAdminPage } from "./pages/SuperAdminPage";
 
-// Pages
+import { FloatingAI } from "./components/FloatingAI";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { InventoryPage } from "./pages/InventoryPage";
@@ -58,6 +58,7 @@ import { SalesPage } from "./pages/SalesPage";
 import { AIPage } from "./pages/AIPage";
 import { NewSalePage } from "./pages/NewSalePage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { FinancesPage } from "./pages/FinancesPage";
 
 export default function App() {
   const [user, setUser] = useState<User | any>(null);
@@ -73,6 +74,7 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [restocks, setRestocks] = useState<RestockRecord[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   const [activeTab, setActiveTab] = useState("dashboard");
   const [searchTerm, setSearchTerm] = useState("");
@@ -128,9 +130,10 @@ export default function App() {
   const [invitePassword, setInvitePassword] = useState("");
 
   // ─── Analytics ────────────────────────────────────────────────────
-  const analytics = useMemo(() => {
+  const analytics = useMemo<InventoryAnalytics>(() => {
     const scopedSales = activeBranchId ? sales.filter(s => s.branchId === activeBranchId) : sales;
     const scopedProducts = activeBranchId ? products.filter(p => p.branchId === activeBranchId) : products;
+    const scopedExpenses = activeBranchId ? expenses.filter(e => e.branchId === activeBranchId) : expenses;
 
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -166,6 +169,17 @@ export default function App() {
       return { ...p, totalQty, totalRev: totalQty * p.price };
     });
 
+    const totalExpenses = scopedExpenses.reduce((acc, e) => acc + e.amount, 0);
+    const totalCostOfProductsSold = scopedSales.reduce((acc, sale) => {
+      return acc + (sale.items || []).reduce((itemAcc, item) => {
+        const p = scopedProducts.find(prod => prod.id === item.productId);
+        return itemAcc + (item.quantity * (p?.costPrice || 0));
+      }, 0);
+    }, 0);
+
+    const totalRevenue = calculateRevenue(scopedSales);
+    const netProfit = totalRevenue - totalCostOfProductsSold - totalExpenses;
+
     const notifications: any[] = [];
     const threeDaysAgo = new Date(now);
     threeDaysAgo.setDate(now.getDate() - 3);
@@ -190,16 +204,15 @@ export default function App() {
 
     return {
       todayRevenue,
-      yesterdayRevenue,
-      revenueChange: yesterdayRevenue === 0 ? 100 : ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100,
       thisWeekRevenue: calculateRevenue(thisWeekSales),
-      lastWeekRevenue: calculateRevenue(lastWeekSales),
+      revenueChange: yesterdayRevenue === 0 ? 100 : ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100,
       weekChange: calculateRevenue(lastWeekSales) === 0 ? 100 : ((calculateRevenue(thisWeekSales) - calculateRevenue(lastWeekSales)) / calculateRevenue(lastWeekSales)) * 100,
       topByQty: [...productPerformance].sort((a, b) => b.totalQty - a.totalQty).slice(0, 5),
-      topByRev: [...productPerformance].sort((a, b) => b.totalRev - a.totalRev).slice(0, 5),
       notifications,
+      netProfit,
+      totalExpenses
     };
-  }, [products, sales, activeBranchId]);
+  }, [products, sales, expenses, activeBranchId]);
 
   const getDaysOfStock = (productId: string) => {
     const product = products.find(p => p.id === productId);
@@ -239,6 +252,7 @@ export default function App() {
   const stats = useMemo<InventoryStats>(() => ({
     totalProducts: products.length,
     totalValue: products.reduce((acc, p) => acc + p.price * p.quantity, 0),
+    totalCostValue: products.reduce((acc, p) => acc + (p.costPrice || 0) * p.quantity, 0),
     lowStockCount: products.filter(p => p.quantity > 0 && p.quantity <= p.minStockLevel).length,
     outOfStockCount: products.filter(p => p.quantity === 0).length,
   }), [products]);
@@ -338,7 +352,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user || !currentStore) { setProducts([]); setSales([]); setRestocks([]); return; }
+    if (!user || !currentStore) { setProducts([]); setSales([]); setRestocks([]); setExpenses([]); return; }
     const unsubProducts = onSnapshot(
       query(collection(db, "stores", currentStore.id, "products"), orderBy("name")),
       (snapshot) => { setProducts(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Product))); setLastSync(new Date()); },
@@ -354,7 +368,12 @@ export default function App() {
       (snapshot) => { setRestocks(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as RestockRecord))); setLastSync(new Date()); },
       (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/restocks`)
     );
-    return () => { unsubProducts(); unsubSales(); unsubRestocks(); };
+    const unsubExpenses = onSnapshot(
+      query(collection(db, "stores", currentStore.id, "expenses"), orderBy("date", "desc")),
+      (snapshot) => { setExpenses(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Expense))); setLastSync(new Date()); },
+      (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/expenses`)
+    );
+    return () => { unsubProducts(); unsubSales(); unsubRestocks(); unsubExpenses(); };
   }, [user, currentStore]);
 
   useEffect(() => {
@@ -660,6 +679,34 @@ export default function App() {
     setCurrentStore(prev => prev ? { ...prev, logoUrl: url } : prev);
     } catch { toast.error("Error al subir el logo"); }
     finally { setIsUploadingLogo(false); }
+  };
+
+  const handleAddExpense = async (expense: Omit<Expense, "id" | "date" | "userId">) => {
+    if (!user || !currentStore) return;
+    try {
+      const id = `expense_${Date.now()}`;
+      const newExpense: Expense = {
+        ...expense,
+        id,
+        storeId: currentStore.id,
+        date: new Date().toISOString(),
+        userId: user.uid,
+      };
+      await setDoc(doc(db, "stores", currentStore.id, "expenses", id), newExpense);
+      toast.success("Gasto registrado");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `stores/${currentStore.id}/expenses`);
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!currentStore) return;
+    try {
+      await deleteDoc(doc(db, "stores", currentStore.id, "expenses", id));
+      toast.success("Gasto eliminado");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `stores/${currentStore.id}/expenses/${id}`);
+    }
   };
 
   const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1288,6 +1335,15 @@ export default function App() {
               icon={<ShoppingCart size={18} />} 
               label="Ventas" 
             />
+            {isAdmin && (
+              <NavItem 
+                dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
+                active={activeTab === "finances"} 
+                onClick={() => setActiveTab("finances")} 
+                icon={<Wallet size={18} />} 
+                label="Finanzas" 
+              />
+            )}
             <NavItem 
               dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
               active={activeTab === "ai"} 
@@ -1451,6 +1507,14 @@ export default function App() {
                   currentStore={currentStore}
                 />
               )}
+              {activeTab === "finances" && isAdmin && (
+                <FinancesPage 
+                  expenses={expenses}
+                  analytics={analytics}
+                  onAddExpense={handleAddExpense}
+                  onDeleteExpense={handleDeleteExpense}
+                />
+              )}
               {activeTab === "ai" && (
                 <AIPage
                   products={products}
@@ -1484,6 +1548,15 @@ export default function App() {
                 />
               )}
             </AnimatePresence>
+            
+            {/* Global floating AI assistant */}
+            <FloatingAI 
+              products={products}
+              sales={sales}
+              expenses={expenses}
+              storeDescription={currentStore?.description}
+              storeName={currentStore?.name}
+            />
           </div>
 
           <CustomerForm
