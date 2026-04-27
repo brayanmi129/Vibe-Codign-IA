@@ -58,7 +58,8 @@ service cloud.firestore {
     // Document ID = email address. Works with any auth provider.
     // The seed admin (admin@stockmaster.ai) can write during setup.
     match /superadmins/{email} {
-      allow read: if isSignedIn() && request.auth.token.email == email;
+      allow get: if isSignedIn() && request.auth.token.email == email;
+      allow list: if isSuperAdmin();
       allow write: if isSignedIn() && (
         isSuperAdmin() ||
         request.auth.token.email == "admin@stockmaster.ai"
