@@ -29,6 +29,7 @@ interface OnboardingWizardProps {
   onComplete: (data: OnboardingData) => void;
   currentUser: any;
   onGoogleSignIn: () => Promise<void>;
+  onBack?: () => void;
 }
 
 export interface OnboardingData {
@@ -82,7 +83,7 @@ const slideVariants = {
 
 const slideTransition = { duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] as any };
 
-export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: OnboardingWizardProps) {
+export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBack }: OnboardingWizardProps) {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -182,7 +183,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
     <div className="min-h-screen flex flex-col bg-white font-sans">
       {/* Top bar */}
       <AnimatePresence>
-        {step > 0 && (
+        {(step > 0 || onBack) && (
           <motion.div
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -190,14 +191,16 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn }: On
             className="flex items-center justify-between px-6 py-5 flex-shrink-0"
           >
             <button
-              onClick={() => go(-1)}
+              onClick={() => step > 0 ? go(-1) : onBack?.()}
               className="flex items-center gap-1.5 text-slate-400 hover:text-slate-800 transition-colors text-sm font-medium"
             >
-              <ArrowLeft size={16} /> Atrás
+              <ArrowLeft size={16} /> {step === 0 ? 'Iniciar sesión' : 'Atrás'}
             </button>
-            <span className="text-xs font-semibold text-slate-300 tabular-nums">
-              {step} / {TOTAL_STEPS - 1}
-            </span>
+            {step > 0 && (
+              <span className="text-xs font-semibold text-slate-300 tabular-nums">
+                {step} / {TOTAL_STEPS - 1}
+              </span>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

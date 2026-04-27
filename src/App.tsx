@@ -859,7 +859,7 @@ export default function App() {
   if (!user || !currentStore) {
     // Onboarding: accessible with or without user (Google sign-in happens inside wizard)
     if (authView === "onboarding") {
-      return <OnboardingWizard currentUser={user} onComplete={handleOnboardingComplete} onGoogleSignIn={handleGoogleLogin} />;
+      return <OnboardingWizard currentUser={user} onComplete={handleOnboardingComplete} onGoogleSignIn={handleGoogleLogin} onBack={() => setAuthViewTracked("login")} />;
     }
     if (!user && (authView === "login" || authView === "signup")) {
       return (
