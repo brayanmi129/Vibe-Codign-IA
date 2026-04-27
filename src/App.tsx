@@ -33,13 +33,14 @@ import {
 import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus, Settings, ChevronRight } from "lucide-react";
 import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
 import { CustomerForm } from "./components/CustomerForm";
+import { PaymentMethodDialog } from "./components/PaymentMethodDialog"; // 🆕
 import { SaleConfirmationDialog } from "./components/SaleConfirmationDialog";
 import {
   TAX_RATE, generateInvoiceNumber, generateInvoicePdf, calculateTotals,
   downloadInvoicePdf, sendInvoiceByEmail, type InvoicePdfPayload,
 } from "./lib/invoiceService";
 import { uploadInvoicePdf, uploadStoreLogo } from "./lib/supabase";
-import { Customer } from "./types";
+import { Customer, PaymentRecord } from "./types";
 import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard";
 import { NavItem } from "./components/NavItem";
 import { generateDemoData } from "./lib/demoData";
@@ -82,7 +83,9 @@ export default function App() {
   const [inventoryTab, setInventoryTab] = useState<"status" | "restock">("status");
   const [cart, setCart] = useState<SaleItem[]>([]);
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false);
-  const [isProcessingSale, setIsProcessingSale] = useState(false);
+const [isProcessingSale, setIsProcessingSale] = useState(false);
+const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
   const [saleConfirmation, setSaleConfirmation] = useState<{
     open: boolean;
     invoicePayload: InvoicePdfPayload | null;
@@ -699,7 +702,7 @@ export default function App() {
     setIsCustomerFormOpen(true);
   };
 
-  const handleFinalizeSale = async (customer: Customer) => {
+  const handleFinalizeSale = async (customer: Customer, payments: PaymentRecord[]) => {
     if (!user || !currentStore || cart.length === 0) return;
     setIsProcessingSale(true);
     try {
@@ -714,11 +717,12 @@ export default function App() {
         ...(customer.email && { email: customer.email }),
       };
       const newSale: SaleRecord = {
-        id: saleId, storeId: currentStore.id, items: cart, totalAmount,
-        date: new Date().toISOString(), userId: user.uid, customer: cleanCustomer,
-        subtotal: totals.subtotal, taxRate: TAX_RATE, taxAmount: totals.taxAmount,
-        invoiceNumber, emailSent: false,
-      };
+  id: saleId, storeId: currentStore.id, items: cart, totalAmount,
+  date: new Date().toISOString(), userId: user.uid, customer: cleanCustomer,
+  subtotal: totals.subtotal, taxRate: TAX_RATE, taxAmount: totals.taxAmount,
+  invoiceNumber, emailSent: false,
+  payments, // 🆕 guardamos los pagos en Firestore
+};
       if (activeBranchId) newSale.branchId = activeBranchId;
 
       await setDoc(doc(db, "stores", currentStore.id, "sales", saleId), newSale);
@@ -740,9 +744,10 @@ export default function App() {
         await updateDoc(doc(db, "stores", currentStore.id, "sales", saleId), { invoicePdfUrl: pdfUrl });
       } catch { }
 
-      setIsCustomerFormOpen(false);
-      setCart([]);
-      setSaleConfirmation({ open: true, invoicePayload, emailSent: emailResult.success, emailMessage: emailResult.message });
+      setIsPaymentDialogOpen(false);
+setPendingCustomer(null);
+setCart([]);
+setSaleConfirmation({ open: true, invoicePayload, emailSent: emailResult.success, emailMessage: emailResult.message });
       toast.success("Venta registrada con éxito");
     } catch (error) {
       toast.error("Error al procesar la venta");
@@ -752,7 +757,26 @@ export default function App() {
     }
   };
 
-  const handleDownloadInvoice = () => {
+  const handleCustomerSubmit = (customer: Customer) => {
+  setPendingCustomer(customer);
+  setIsCustomerFormOpen(false);
+  setIsPaymentDialogOpen(true);
+};
+
+// 🆕 El usuario completó los pagos → ejecutamos la lógica original
+const handleConfirmPayment = (payments: PaymentRecord[]) => {
+  if (!pendingCustomer) return;
+  handleFinalizeSale(pendingCustomer, payments);
+};
+
+// 🆕 Cancelar el modal de pagos descarta también al cliente pendiente
+const handleCancelPayment = () => {
+  if (isProcessingSale) return;
+  setIsPaymentDialogOpen(false);
+  setPendingCustomer(null);
+};
+
+const handleDownloadInvoice = () => {
     if (saleConfirmation.invoicePayload) downloadInvoicePdf(saleConfirmation.invoicePayload);
     setSaleConfirmation(prev => ({ ...prev, open: false }));
     setActiveTab("dashboard");
@@ -1471,12 +1495,20 @@ export default function App() {
           </div>
 
           <CustomerForm
-            open={isCustomerFormOpen}
-            totalAmount={cart.reduce((acc, item) => acc + item.totalPrice, 0)}
-            isProcessing={isProcessingSale}
-            onCancel={() => setIsCustomerFormOpen(false)}
-            onSubmit={handleFinalizeSale}
-          />
+  open={isCustomerFormOpen}
+  totalAmount={cart.reduce((acc, item) => acc + item.totalPrice, 0)}
+  isProcessing={false} /* ya no procesa: solo valida y abre el siguiente modal */
+  onCancel={() => setIsCustomerFormOpen(false)}
+  onSubmit={handleCustomerSubmit} /* 🆕 abre PaymentMethodDialog */
+/>
+{/* 🆕 Modal Método de Pago + Pagos divididos */}
+<PaymentMethodDialog
+  open={isPaymentDialogOpen}
+  totalAmount={cart.reduce((acc, item) => acc + item.totalPrice, 0)}
+  isProcessing={isProcessingSale}
+  onCancel={handleCancelPayment}
+  onConfirm={handleConfirmPayment}
+/>
           {saleConfirmation.invoicePayload && (
             <SaleConfirmationDialog
               open={saleConfirmation.open}
