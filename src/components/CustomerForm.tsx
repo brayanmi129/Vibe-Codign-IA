@@ -195,7 +195,7 @@ export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubm
                 Procesando...
               </>
             ) : (
-              "Terminar Venta"
+              "Terminar la Venta"
             )}
           </Button>
         </DialogFooter>
