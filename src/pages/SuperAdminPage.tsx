@@ -1,21 +1,24 @@
 import * as React from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  ShieldCheck, 
-  LogOut, 
-  RefreshCw, 
-  Trash2, 
+  ShieldCheck,
+  LogOut,
+  RefreshCw,
+  Trash2,
   Store as StoreIcon,
-  Users, 
-  Search, 
-  AlertTriangle, 
-  X, 
-  UserPlus, 
+  Users,
+  Search,
+  AlertTriangle,
+  X,
+  UserPlus,
   Mail,
   ChevronRight,
-  BarChart3,
+  ChevronLeft,
   Activity,
-  ArrowRight
+  Package,
+  ShoppingCart,
+  Calendar,
+  Crown,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -26,11 +29,12 @@ import { Toaster } from "../components/ui/sonner";
 import { toast } from "sonner";
 import { AdminStoreView } from "../types";
 import {
-  getAllStores, 
+  getAllStores,
   deleteStoreTenant,
-  getSuperAdmins, 
-  addSuperAdmin, 
+  getSuperAdmins,
+  addSuperAdmin,
   removeSuperAdmin,
+  removeMemberFromStore,
 } from "../lib/superAdminService";
 
 interface SuperAdminPageProps {
@@ -50,7 +54,8 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
   const [stores, setStores] = React.useState<AdminStoreView[]>([]);
   const [superAdmins, setSuperAdmins] = React.useState<string[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [activeView, setActiveView] = React.useState<"stores" | "admins">("stores");
+  const [activeView, setActiveView] = React.useState<"stores" | "admins" | "storeDetail">("stores");
+  const [selectedStore, setSelectedStore] = React.useState<AdminStoreView | null>(null);
 
   const [searchTerm, setSearchTerm] = React.useState("");
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
@@ -98,6 +103,29 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
       toast.error("Error al eliminar la tienda");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleOpenStoreDetail = (store: AdminStoreView) => {
+    setSelectedStore(store);
+    setActiveView("storeDetail");
+  };
+
+  const handleRemoveMember = async (member: { email: string; userId: string; role: string; displayName?: string; storeId: string; branchId?: string; joinedAt?: string; authMethod?: 'google' | 'email' }) => {
+    if (!selectedStore) return;
+    try {
+      await removeMemberFromStore(selectedStore.id, member as any);
+      setSelectedStore(prev => prev ? {
+        ...prev,
+        members: prev.members.filter(m => m.email !== member.email),
+      } : null);
+      setStores(prev => prev.map(s => s.id === selectedStore.id ? {
+        ...s,
+        members: s.members.filter(m => m.email !== member.email),
+      } : s));
+      toast.success(`${member.email} eliminado de la tienda`);
+    } catch {
+      toast.error("Error al eliminar el miembro");
     }
   };
 
@@ -157,16 +185,16 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
             <p className="text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em] px-4 mb-4">Administración</p>
             
             <Button
-              onClick={() => setActiveView("stores")}
+              onClick={() => { setActiveView("stores"); setSelectedStore(null); }}
               className={`w-full justify-start gap-4 h-14 rounded-2xl transition-all font-black text-xs uppercase tracking-widest px-5 ${
-                activeView === "stores" 
-                  ? "bg-white text-indigo-700 shadow-xl shadow-indigo-900/20" 
+                activeView === "stores" || activeView === "storeDetail"
+                  ? "bg-white text-indigo-700 shadow-xl shadow-indigo-900/20"
                   : "bg-transparent text-indigo-100 hover:bg-white/10"
               }`}
             >
               <StoreIcon size={20} />
               Tiendas
-              <Badge className={`ml-auto border-none pointer-events-none ${activeView === "stores" ? "bg-indigo-700 text-white" : "bg-white/20 text-indigo-100"}`}>
+              <Badge className={`ml-auto border-none pointer-events-none ${activeView === "stores" || activeView === "storeDetail" ? "bg-indigo-700 text-white" : "bg-white/20 text-indigo-100"}`}>
                 {stores.length}
               </Badge>
             </Button>
@@ -217,11 +245,13 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
               Sistema Activo
             </div>
             <h1 className="text-5xl font-black text-slate-900 tracking-tight">
-              {activeView === "stores" ? "Control de Tiendas" : "Equipo de Super Usuarios"}
+              {activeView === "stores" ? "Control de Tiendas" : activeView === "storeDetail" ? selectedStore?.name : "Equipo de Super Usuarios"}
             </h1>
             <p className="text-slate-500 font-medium text-lg">
-              {activeView === "stores" 
-                ? "Gestiona el ecosistema de sucursales y suscriptores." 
+              {activeView === "stores"
+                ? "Gestiona el ecosistema de sucursales y suscriptores."
+                : activeView === "storeDetail"
+                ? `ID: ${selectedStore?.id} · ${selectedStore?.members.length} miembros`
                 : "Administra los accesos de nivel raíz al sistema."}
             </p>
           </div>
@@ -333,6 +363,7 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
                               </Button>
                               <Button
                                 variant="ghost"
+                                onClick={() => handleOpenStoreDetail(store)}
                                 className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 group-hover:text-indigo-600 group-hover:bg-indigo-50 transition-all duration-300 flex items-center justify-center p-0"
                               >
                                 <ChevronRight size={24} />
@@ -396,6 +427,139 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
                           </AnimatePresence>
                         </motion.div>
                       ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          ) : activeView === "storeDetail" && selectedStore ? (
+            <motion.div
+              key="storeDetail"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
+            >
+              {/* Back button */}
+              <Button
+                variant="ghost"
+                onClick={() => { setActiveView("stores"); setSelectedStore(null); }}
+                className="flex items-center gap-3 h-12 px-6 rounded-2xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 font-black text-xs uppercase tracking-widest transition-all"
+              >
+                <ChevronLeft size={20} /> Volver a Tiendas
+              </Button>
+
+              {/* Store header card */}
+              <Card className="bg-white border-none shadow-2xl shadow-indigo-100/40 rounded-[40px] overflow-hidden">
+                <CardContent className="p-10">
+                  <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
+                    <div
+                      className="w-28 h-28 rounded-[32px] flex-shrink-0 flex items-center justify-center shadow-2xl overflow-hidden relative"
+                      style={{ backgroundColor: selectedStore.branding?.primaryColor || "#4f46e5" }}
+                    >
+                      <div className="absolute inset-0 bg-black/10" />
+                      {selectedStore.logoUrl ? (
+                        <img src={selectedStore.logoUrl} alt="" className="w-full h-full object-cover relative z-10" />
+                      ) : (
+                        <StoreIcon size={44} className="text-white relative z-10" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-4 mb-3">
+                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{selectedStore.name}</h2>
+                        {selectedStore.businessType && (
+                          <Badge className="bg-slate-100 text-slate-500 border-none font-black text-[10px] uppercase tracking-widest rounded-lg px-3">
+                            {CATEGORY_LABELS[selectedStore.businessType] || selectedStore.businessType}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm font-mono font-bold text-indigo-500 bg-indigo-50 px-3 py-1 rounded-lg inline-block mb-4">{selectedStore.id}</p>
+                      <div className="flex items-center gap-2 text-slate-400 font-bold text-sm">
+                        <Calendar size={16} />
+                        Registrada el {new Date(selectedStore.createdAt).toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric" })}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 shrink-0">
+                      {[
+                        { icon: <Users size={22} />, value: selectedStore.members.length, label: "Miembros" },
+                        { icon: <Package size={22} />, value: selectedStore.productCount, label: "Productos" },
+                        { icon: <ShoppingCart size={22} />, value: selectedStore.saleCount, label: "Ventas" },
+                      ].map(stat => (
+                        <div key={stat.label} className="flex flex-col items-center justify-center bg-slate-50 rounded-[24px] p-5 min-w-[90px] gap-2">
+                          <div className="text-indigo-500">{stat.icon}</div>
+                          <p className="text-2xl font-black text-slate-900">{stat.value}</p>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Members list */}
+              <Card className="bg-white border-none shadow-2xl shadow-indigo-100/40 rounded-[40px] overflow-hidden">
+                <CardHeader className="p-10 pb-6">
+                  <div className="flex items-center gap-4">
+                    <CardTitle className="text-2xl font-black text-slate-900">Miembros del Equipo</CardTitle>
+                    <div className="px-3 py-1 bg-slate-900 text-white rounded-full font-black text-[10px] uppercase tracking-widest">
+                      {selectedStore.members.length}
+                    </div>
+                  </div>
+                  <CardDescription className="text-base text-slate-400 font-medium">Todos los usuarios con acceso a esta tienda.</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {selectedStore.members.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-20 text-slate-400">
+                      <Users size={48} className="opacity-20 mb-4" />
+                      <p className="font-black text-slate-900">Sin miembros</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-50">
+                      {selectedStore.members.map(member => {
+                        const isOwner = member.userId === selectedStore.ownerId;
+                        return (
+                          <div key={member.email} className="flex items-center gap-6 px-10 py-6 hover:bg-indigo-50/20 transition-all group">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-lg font-black shadow-lg shrink-0">
+                              {(member.displayName || member.email)[0].toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-1">
+                                <p className="font-black text-slate-900 truncate">{member.displayName || member.email}</p>
+                                {isOwner && (
+                                  <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 rounded-md border border-amber-100">
+                                    <Crown size={12} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest">Propietario</span>
+                                  </div>
+                                )}
+                              </div>
+                              <p className="text-sm font-medium text-slate-400 truncate">{member.email}</p>
+                              {member.joinedAt && (
+                                <p className="text-[11px] font-bold text-slate-300 mt-1 uppercase tracking-wider">
+                                  Unido: {new Date(member.joinedAt).toLocaleDateString("es-CO")}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <Badge className={`border-none font-black text-[10px] uppercase tracking-widest rounded-lg px-3 ${
+                                member.role === "admin" ? "bg-indigo-100 text-indigo-600" :
+                                member.role === "cashier" ? "bg-emerald-100 text-emerald-600" :
+                                "bg-slate-100 text-slate-500"
+                              }`}>
+                                {member.role === "admin" ? "Admin" : member.role === "cashier" ? "Cajero" : member.role}
+                              </Badge>
+                              {!isOwner && (
+                                <Button
+                                  variant="ghost"
+                                  onClick={() => handleRemoveMember(member)}
+                                  className="w-12 h-12 rounded-xl text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center p-0 border border-transparent hover:border-rose-100"
+                                >
+                                  <Trash2 size={20} />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
