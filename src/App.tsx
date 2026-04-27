@@ -59,6 +59,7 @@ import { AIPage } from "./pages/AIPage";
 import { NewSalePage } from "./pages/NewSalePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { FinancesPage } from "./pages/FinancesPage";
+import { LoginPage } from "./pages/LoginPage";
 
 export default function App() {
   const [user, setUser] = useState<User | any>(null);
@@ -925,146 +926,20 @@ export default function App() {
     }
     if (!user && (authView === "login" || authView === "signup")) {
       return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-          <div className="mb-8 flex flex-col items-center">
-            <div className="w-16 h-16 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-indigo-200 mb-4 transform -rotate-3 transition-transform hover:rotate-0">
-              <Package className="text-white w-8 h-8" />
-            </div>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">StockMaster <span className="text-indigo-600">Pro</span></h1>
-            <p className="text-slate-500 font-medium">Gestión de inventario para el futuro</p>
-          </div>
-
-          <Card className="w-full max-w-md shadow-2xl border-none p-1 bg-white rounded-3xl overflow-hidden">
-            <CardHeader className="text-center pb-2">
-              <CardTitle className="text-2xl font-bold">
-                {authView === "login" ? "Bienvenido" : "Crear cuenta"}
-              </CardTitle>
-              <CardDescription>
-                {authView === "login" ? "Ingresa para gestionar tu inventario" : "Regístrate como empleado invitado"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-4">
-              {authView === "login" ? (
-                <form onSubmit={(e) => handleEmailAuth(e, "login")} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      placeholder="email@ejemplo.com"
-                      value={authEmail}
-                      onChange={e => setAuthEmail(e.target.value)}
-                      disabled={isAuthLoading}
-                      required
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Contraseña</Label>
-                    <Input
-                      type="password"
-                      placeholder="••••••••"
-                      value={authPassword}
-                      onChange={e => setAuthPassword(e.target.value)}
-                      disabled={isAuthLoading}
-                      required
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
-                  <Button
-                    type="submit"
-                    disabled={isAuthLoading}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100 transition-all disabled:opacity-70"
-                  >
-                    {isAuthLoading
-                      ? <RefreshCw size={18} className="animate-spin" />
-                      : "Iniciar Sesión"}
-                  </Button>
-                  <div className="relative">
-                    <Separator className="my-4" />
-                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-[10px] text-slate-400 font-bold uppercase">O continúa con</span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={handleGoogleLogin}
-                    disabled={isAuthLoading}
-                    className="w-full h-12 gap-3 border-2 hover:bg-slate-50 rounded-xl"
-                  >
-                    <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-                    Iniciar con Google
-                  </Button>
-                  <div className="relative">
-                    <Separator className="my-4" />
-                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-[10px] text-slate-400 font-bold uppercase">¿Nuevo por aquí?</span>
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={() => setAuthViewTracked("onboarding")}
-                    disabled={isAuthLoading}
-                    className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base shadow-lg shadow-emerald-100 transition-all"
-                  >
-                    <UserPlus size={18} className="mr-2" />
-                    Registrar mi tienda
-                  </Button>
-                </form>
-              ) : (
-                <form onSubmit={(e) => handleEmailAuth(e, "signup")} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Nombre Completo</Label>
-                    <Input
-                      placeholder="Tu Nombre"
-                      value={authDisplayName}
-                      onChange={e => setAuthDisplayName(e.target.value)}
-                      disabled={isAuthLoading}
-                      required
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      placeholder="email@ejemplo.com"
-                      value={authEmail}
-                      onChange={e => setAuthEmail(e.target.value)}
-                      disabled={isAuthLoading}
-                      required
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Contraseña</Label>
-                    <Input
-                      type="password"
-                      placeholder="Mínimo 6 caracteres"
-                      value={authPassword}
-                      onChange={e => setAuthPassword(e.target.value)}
-                      disabled={isAuthLoading}
-                      required
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
-                  <Button
-                    type="submit"
-                    disabled={isAuthLoading}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 rounded-xl text-white font-bold text-lg shadow-lg shadow-indigo-100 disabled:opacity-70"
-                  >
-                    {isAuthLoading
-                      ? <RefreshCw size={18} className="animate-spin" />
-                      : "Crear cuenta"}
-                  </Button>
-                  <div className="text-center">
-                    <Button variant="link" type="button" onClick={() => setAuthViewTracked("login")} className="text-indigo-600">
-                      ¿Ya tienes cuenta? Ingresa
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </CardContent>
-          </Card>
-          <div className="mt-8 text-center">
-            <p className="text-xs text-slate-400 font-medium">© 2024 StockMaster Pro - Todos los derechos reservados</p>
-          </div>
+        <>
+          <LoginPage
+            authView={authView}
+            setAuthView={setAuthViewTracked}
+            authEmail={authEmail}
+            setAuthEmail={setAuthEmail}
+            authPassword={authPassword}
+            setAuthPassword={setAuthPassword}
+            authDisplayName={authDisplayName}
+            setAuthDisplayName={setAuthDisplayName}
+            isAuthLoading={isAuthLoading}
+            handleEmailAuth={handleEmailAuth}
+            handleGoogleLogin={handleGoogleLogin}
+          />
 
           {/* ── Account linking overlay ── */}
           <AnimatePresence>
@@ -1125,7 +1000,7 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </>
       );
     }
     return (
