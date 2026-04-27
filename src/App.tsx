@@ -959,11 +959,6 @@ export default function App() {
                     <UserPlus size={18} className="mr-2" />
                     Registrar mi tienda
                   </Button>
-                  <div className="text-center">
-                    <Button variant="link" type="button" onClick={() => setAuthViewTracked("signup")} className="text-slate-400 text-sm">
-                      ¿Empleado invitado? Crear cuenta
-                    </Button>
-                  </div>
                 </form>
               ) : (
                 <form onSubmit={(e) => handleEmailAuth(e, "signup")} className="space-y-4">
