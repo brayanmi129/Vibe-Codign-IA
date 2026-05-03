@@ -29,7 +29,8 @@ import {
 } from "./lib/firebase";
 import {
   Product, SaleItem, SaleRecord, InventoryStats, RestockRecord,
-  Store, UserRole, StoreMember, Branch, TempStoreSettings, Expense, InventoryAnalytics
+  Store, UserRole, StoreMember, Branch, TempStoreSettings, Expense, InventoryAnalytics,
+  TaxCategory, TAX_CATEGORY_RATES
 } from "./types";
 import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus, Settings, ChevronRight } from "lucide-react";
 import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
@@ -37,7 +38,7 @@ import { CustomerForm } from "./components/CustomerForm";
 import { PaymentMethodDialog } from "./components/PaymentMethodDialog"; // 🆕
 import { SaleConfirmationDialog } from "./components/SaleConfirmationDialog";
 import {
-  TAX_RATE, generateInvoiceNumber, generateInvoicePdf, calculateTotals,
+  TAX_RATE, generateInvoiceNumber, generateInvoicePdf, calculateTotalsFromItems,
   downloadInvoicePdf, sendInvoiceByEmail, type InvoicePdfPayload,
 } from "./lib/invoiceService";
 import { uploadInvoicePdf, uploadStoreLogo } from "./lib/supabase";
@@ -183,15 +184,35 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
     });
 
     const totalExpenses = scopedExpenses.reduce((acc, e) => acc + e.amount, 0);
-    const totalCostOfProductsSold = scopedSales.reduce((acc, sale) => {
-      return acc + (sale.items || []).reduce((itemAcc, item) => {
-        const p = scopedProducts.find(prod => prod.id === item.productId);
-        return itemAcc + (item.quantity * (p?.costPrice || 0));
-      }, 0);
-    }, 0);
 
-    const totalRevenue = calculateRevenue(scopedSales);
-    const netProfit = totalRevenue - totalCostOfProductsSold - totalExpenses;
+    // ─── Utilidad honesta ──────────────────────────────────────────────
+    // Solo contamos en el cálculo los items vendidos cuyo producto tiene costPrice.
+    // Los items sin costo se contabilizan APARTE para mostrar la cobertura
+    // y avisar al usuario que la utilidad es parcial.
+    let totalSalesItems = 0;          // # items vendidos en total
+    let salesItemsMissingCost = 0;    // # items sin costo conocido
+    let revenueOfItemsWithCost = 0;   // ingreso solo de items con costo
+    let costOfItemsWithCost = 0;      // costo de esos mismos items
+    for (const sale of scopedSales) {
+      for (const item of (sale.items || [])) {
+        totalSalesItems += item.quantity;
+        const p = scopedProducts.find(prod => prod.id === item.productId);
+        if (p && typeof p.costPrice === 'number' && p.costPrice > 0) {
+          revenueOfItemsWithCost += item.totalPrice;
+          costOfItemsWithCost += item.quantity * p.costPrice;
+        } else {
+          salesItemsMissingCost += item.quantity;
+        }
+      }
+    }
+    // Cobertura: % de items vendidos con costo conocido. 100 = utilidad real.
+    const profitCoverage = totalSalesItems > 0
+      ? Math.round((1 - salesItemsMissingCost / totalSalesItems) * 100)
+      : 100;
+    // Utilidad = (ingreso de items con costo) - (costo de esos items) - (gastos generales)
+    // Los gastos generales se restan completos porque no son atribuibles a items específicos.
+    const netProfit = revenueOfItemsWithCost - costOfItemsWithCost - totalExpenses;
+    const productsMissingCost = scopedProducts.filter(p => !p.costPrice || p.costPrice <= 0).length;
 
     const notifications: any[] = [];
     const threeDaysAgo = new Date(now);
@@ -223,7 +244,10 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       topByQty: [...productPerformance].sort((a, b) => b.totalQty - a.totalQty).slice(0, 5),
       notifications,
       netProfit,
-      totalExpenses
+      totalExpenses,
+      profitCoverage,
+      productsMissingCost,
+      salesItemsMissingCost,
     };
   }, [effectiveProducts, sales, expenses, activeBranchId]);
 
@@ -767,6 +791,12 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
     try {
       const id = editingProduct?.id || Math.random().toString(36).substr(2, 9);
       const costPriceRaw = parseFloat(formData.get("costPrice") as string);
+      // Categoría tributaria: viene del Select (input hidden). Si no hay, default 'general'.
+      const rawTaxCategory = formData.get("taxCategory") as string | null;
+      const taxCategory: TaxCategory =
+        rawTaxCategory && rawTaxCategory in TAX_CATEGORY_RATES
+          ? (rawTaxCategory as TaxCategory)
+          : 'general';
       const newProduct: Product = {
         id, storeId: currentStore!.id, name,
         code: (formData.get("code") as string) || generateProductCode(name),
@@ -777,6 +807,8 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         category: formData.get("category") as string || "General",
         minStockLevel: parseInt(formData.get("minStock") as string) || 5,
         lastUpdated: new Date().toISOString(),
+        taxCategory,
+        taxRate: TAX_CATEGORY_RATES[taxCategory],
       };
       await setDoc(doc(db, "stores", currentStore!.id, "products", id), newProduct);
       toast.success(editingProduct ? "Producto actualizado" : "Producto añadido");
@@ -815,7 +847,8 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
     setIsProcessingSale(true);
     try {
       const totalAmount = cart.reduce((acc, item) => acc + item.totalPrice, 0);
-      const totals = calculateTotals(totalAmount);
+      // Calculamos línea por línea respetando el IVA de cada producto.
+      const totals = calculateTotalsFromItems(cart);
       const saleId = `sale_${Date.now()}`;
       const invoiceNumber = generateInvoiceNumber(sales.length);
       const cleanCustomer: Customer = {
@@ -974,13 +1007,25 @@ const handleDownloadInvoice = () => {
       ? (product.branchStock?.[activeBranchId] ?? 0)
       : product.quantity;
     if (quantity > available) { toast.error(`Stock insuficiente para ${product.name}`); return; }
+    // Snapshot tributario al momento de la venta — si el producto no tiene categoría
+    // asignada, asumimos 'general' (19%) que es la tarifa estándar.
+    const itemTaxCategory: TaxCategory = product.taxCategory || 'general';
+    const itemTaxRate = product.taxRate ?? TAX_CATEGORY_RATES[itemTaxCategory];
     const existingItem = cart.find(item => item.productId === product.id);
     if (existingItem) {
       const newQuantity = existingItem.quantity + quantity;
       if (newQuantity > available) { toast.error(`Stock insuficiente para ${product.name}`); return; }
       setCart(cart.map(item => item.productId === product.id ? { ...item, quantity: newQuantity, totalPrice: newQuantity * item.unitPrice } : item));
     } else {
-      setCart([...cart, { productId: product.id, productName: product.name, quantity, unitPrice: product.price, totalPrice: quantity * product.price }]);
+      setCart([...cart, {
+        productId: product.id,
+        productName: product.name,
+        quantity,
+        unitPrice: product.price,
+        totalPrice: quantity * product.price,
+        taxRate: itemTaxRate,
+        taxCategory: itemTaxCategory,
+      }]);
     }
     toast.success(`${product.name} añadido al carrito`);
   };

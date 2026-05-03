@@ -30,6 +30,9 @@ interface Analytics {
   notifications: Array<{ id: string; type: string; title: string; message: string }>;
   netProfit: number;
   totalExpenses: number;
+  profitCoverage?: number;
+  productsMissingCost?: number;
+  salesItemsMissingCost?: number;
 }
 
 interface DashboardPageProps {
@@ -93,13 +96,26 @@ export function DashboardPage({ analytics, stats, salesHistoryData, onOpenAI }: 
           />
         </div>
         <div className="md:col-span-3 lg:col-span-3">
-          <StatCard
-            title="Utilidad Neta Amort."
-            value={formatCurrency(analytics.netProfit)}
-            icon={<ShieldCheck className="text-emerald-600" />}
-            variant="default"
-            description="Ganancia real estimada"
-          />
+          {(() => {
+            const coverage = analytics.profitCoverage ?? 100;
+            const missing = analytics.productsMissingCost ?? 0;
+            const isPartial = coverage < 100;
+            // Si cobertura = 100 → ganancia confirmada (verde, ShieldCheck).
+            // Si cobertura < 100 → ganancia parcial (warning amber, AlertTriangle) con cuántos productos faltan.
+            return (
+              <StatCard
+                title={isPartial ? `Utilidad Parcial · ${coverage}%` : "Utilidad Neta"}
+                value={formatCurrency(analytics.netProfit)}
+                icon={isPartial
+                  ? <AlertTriangle className="text-amber-600" />
+                  : <ShieldCheck className="text-emerald-600" />}
+                variant={isPartial ? "warning" : "default"}
+                description={isPartial
+                  ? `Faltan precios de costo en ${missing} producto${missing !== 1 ? 's' : ''}`
+                  : "Ganancia real (todos los costos registrados)"}
+              />
+            );
+          })()}
         </div>
         <div className="md:col-span-3 lg:col-span-3">
           <StatCard

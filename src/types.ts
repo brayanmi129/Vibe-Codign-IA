@@ -43,6 +43,27 @@ export interface StoreMember {
   authMethod?: 'google' | 'email';
 }
 
+// ── Categorías tributarias DIAN (Colombia) ────────────────────────
+// - excluido: no causa IVA (ej: medicamentos, servicios médicos)
+// - exento:   gravado a tasa 0% (ej: leche, huevos, carne fresca)
+// - reducido: tarifa especial 5% (ej: café, chocolate, productos canasta familiar)
+// - general:  tarifa estándar 19% (la mayoría de productos)
+export type TaxCategory = 'excluido' | 'exento' | 'reducido' | 'general';
+
+export const TAX_CATEGORY_RATES: Record<TaxCategory, number> = {
+  excluido: 0,
+  exento: 0,
+  reducido: 0.05,
+  general: 0.19,
+};
+
+export const TAX_CATEGORY_LABELS: Record<TaxCategory, string> = {
+  excluido: 'Excluido (sin IVA)',
+  exento: 'Exento (0%)',
+  reducido: 'Reducido (5%)',
+  general: 'General (19%)',
+};
+
 export interface Product {
   id: string;
   storeId: string;
@@ -57,6 +78,9 @@ export interface Product {
   category: string;
   minStockLevel: number;
   lastUpdated: string;
+  // Tributario — opcional para retrocompatibilidad. Si no está, se asume 'general' (19%)
+  taxCategory?: TaxCategory;
+  taxRate?: number; // Derivado de taxCategory; se guarda redundante para queries/snapshot
 }
 
 export interface SaleItem {
@@ -65,6 +89,9 @@ export interface SaleItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  // Snapshot tributario al momento de la venta — NO recalcular si después cambia el producto.
+  taxRate?: number;
+  taxCategory?: TaxCategory;
 }
 
 // 🆕 NUEVO: datos del cliente para la factura
@@ -130,8 +157,14 @@ export interface InventoryAnalytics {
   weekChange: number;
   topByQty: { id: string; name: string; category: string; totalQty: number; totalRev: number }[];
   notifications: { id: string; type: string; title: string; message: string }[];
-  netProfit?: number; // Nueva utilidad neta
-  totalExpenses?: number; // Nuevos gastos totales
+  // Utilidad: solo cuenta items vendidos cuyo producto tiene costPrice. Lo demás se ignora.
+  netProfit?: number;
+  totalExpenses?: number;
+  // Cobertura de costo: % de items vendidos para los que SÍ conocemos el costo.
+  // Si < 100, el netProfit es parcial — la UI debe avisar al usuario.
+  profitCoverage?: number; // 0 a 100
+  productsMissingCost?: number; // # de productos del catálogo sin costPrice
+  salesItemsMissingCost?: number; // # de items vendidos sin costPrice conocido
 }
 
 export interface AIInsight {

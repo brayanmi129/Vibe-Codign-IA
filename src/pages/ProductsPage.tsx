@@ -15,10 +15,10 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { Search, Edit2, Trash2, AlertTriangle, Plus, Sparkles, Camera, Loader2, Upload, FileSpreadsheet, RefreshCw, Download } from "lucide-react";
+import { Search, Edit2, Trash2, AlertTriangle, Plus, Sparkles, Camera, Loader2, Upload, FileSpreadsheet, RefreshCw, Download, Receipt } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import { Product } from "@/types";
-import { analyzeProductImage } from "@/lib/inventoryService";
+import { Product, TaxCategory, TAX_CATEGORY_LABELS, TAX_CATEGORY_RATES } from "@/types";
+import { analyzeProductImage, suggestProductTax } from "@/lib/inventoryService";
 import { downloadProductTemplate } from "@/components/ExcelExport";
 import { toast } from "sonner";
 
@@ -72,9 +72,48 @@ export function ProductsPage({
   const [importRows, setImportRows] = React.useState<ImportRow[]>([]);
   const [isImportOpen, setIsImportOpen] = React.useState(false);
   const [isImporting, setIsImporting] = React.useState(false);
+  const [taxCategory, setTaxCategory] = React.useState<TaxCategory>('general');
+  const [isSuggestingTax, setIsSuggestingTax] = React.useState(false);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const importRef = React.useRef<HTMLInputElement>(null);
+  const formRef = React.useRef<HTMLFormElement>(null);
+
+  // Sincroniza el Select de IVA cuando cambia el producto que se está editando
+  // o cuando la IA llena formValues (escaneo por imagen).
+  React.useEffect(() => {
+    if (editingProduct?.taxCategory) setTaxCategory(editingProduct.taxCategory);
+    else if (formValues.taxCategory) setTaxCategory(formValues.taxCategory as TaxCategory);
+    else setTaxCategory('general');
+  }, [editingProduct?.id, formValues.taxCategory]);
+
+  const handleSuggestTax = async () => {
+    const form = formRef.current;
+    if (!form) return;
+    const fd = new FormData(form);
+    const name = String(fd.get('name') || '').trim();
+    const category = String(fd.get('category') || '').trim();
+    if (!name) {
+      toast.error("Escribe primero el nombre del producto");
+      return;
+    }
+    setIsSuggestingTax(true);
+    try {
+      const result = await suggestProductTax(name, category);
+      if (result) {
+        setTaxCategory(result.taxCategory);
+        const confLabel = result.confidence === 'alta' ? '✓' : result.confidence === 'baja' ? '?' : '';
+        toast.success(
+          `${confLabel} ${TAX_CATEGORY_LABELS[result.taxCategory]} — ${result.reasoning}`,
+          { duration: 6000 }
+        );
+      } else {
+        toast.error("No se pudo obtener sugerencia. Verifica que la API key de Gemini esté configurada.");
+      }
+    } finally {
+      setIsSuggestingTax(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -297,7 +336,9 @@ export function ProductsPage({
                       <Plus size={16} /> Nuevo
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px]">
-                      <form onSubmit={handleAddProduct}>
+                      <form ref={formRef} onSubmit={handleAddProduct}>
+                        {/* taxCategory no es un input nativo (Select shadcn) — lo enviamos por hidden */}
+                        <input type="hidden" name="taxCategory" value={taxCategory} />
                         <DialogHeader>
                           <div className="flex items-center justify-between">
                             <DialogTitle>{editingProduct ? "Editar Producto" : "Agregar Producto"}</DialogTitle>
@@ -340,6 +381,48 @@ export function ProductsPage({
                               <Input id="costPrice" name="costPrice" type="number" step="1" defaultValue={editingProduct?.costPrice} className="pl-7" placeholder="Opcional" />
                             </div>
                           </div>
+                          {/* ── IVA — Categoría tributaria DIAN ───────────────── */}
+                          <div className="grid grid-cols-4 items-start gap-4">
+                            <Label className="text-right pt-2 flex items-center justify-end gap-1.5">
+                              <Receipt size={12} className="text-slate-400" />
+                              IVA
+                            </Label>
+                            <div className="col-span-3 space-y-2">
+                              <div className="flex gap-2">
+                                <Select value={taxCategory} onValueChange={(v) => setTaxCategory(v as TaxCategory)}>
+                                  <SelectTrigger className="flex-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="general">General — 19%</SelectItem>
+                                    <SelectItem value="reducido">Reducido — 5%</SelectItem>
+                                    <SelectItem value="exento">Exento — 0%</SelectItem>
+                                    <SelectItem value="excluido">Excluido (sin IVA)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-violet-200 text-violet-700 hover:bg-violet-50 gap-1.5 h-9"
+                                  onClick={handleSuggestTax}
+                                  disabled={isSuggestingTax}
+                                  title="ARIA analiza el producto y sugiere la categoría tributaria DIAN"
+                                >
+                                  {isSuggestingTax
+                                    ? <Loader2 size={13} className="animate-spin" />
+                                    : <Sparkles size={13} />}
+                                  IA
+                                </Button>
+                              </div>
+                              <p className="text-[10px] text-slate-400 leading-relaxed">
+                                {taxCategory === 'general' && 'Tarifa estándar — la mayoría de productos.'}
+                                {taxCategory === 'reducido' && 'Café, chocolate, azúcar, sal, aceites, harina.'}
+                                {taxCategory === 'exento' && 'Leche, huevos, carne fresca, pescado fresco.'}
+                                {taxCategory === 'excluido' && 'Medicamentos, libros, transporte público.'}
+                              </p>
+                            </div>
+                          </div>
                           {!editingProduct && (
                             <div className="grid grid-cols-4 items-center gap-4">
                               <Label htmlFor="quantity" className="text-right">Stock Inicial</Label>
@@ -377,6 +460,7 @@ export function ProductsPage({
                   <TableHead className="font-semibold">Precio Venta</TableHead>
                   <TableHead className="font-semibold">Precio Costo</TableHead>
                   <TableHead className="font-semibold">Margen</TableHead>
+                  <TableHead className="font-semibold">IVA</TableHead>
                   <TableHead className="font-semibold">Stock Mínimo</TableHead>
                   <TableHead className="text-right font-semibold">Acciones</TableHead>
                 </TableRow>
@@ -409,6 +493,28 @@ export function ProductsPage({
                       })() : <span className="text-slate-300 italic text-xs">—</span>}
                     </TableCell>
                     <TableCell>
+                      {(() => {
+                        const cat: TaxCategory = product.taxCategory || 'general';
+                        const rate = product.taxRate ?? TAX_CATEGORY_RATES[cat];
+                        const className =
+                          cat === 'general' ? 'bg-slate-100 text-slate-600' :
+                          cat === 'reducido' ? 'bg-amber-50 text-amber-700' :
+                          cat === 'exento' ? 'bg-sky-50 text-sky-700' :
+                          'bg-violet-50 text-violet-700';
+                        const label = cat === 'excluido' ? 'Excl.' : `${(rate * 100).toFixed(0)}%`;
+                        const isLegacy = !product.taxCategory;
+                        return (
+                          <Badge
+                            variant="secondary"
+                            className={className}
+                            title={isLegacy ? 'Sin categoría asignada — se asume 19%. Edita el producto para confirmar.' : undefined}
+                          >
+                            {label}{isLegacy && '*'}
+                          </Badge>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-2 text-slate-500">
                         <AlertTriangle size={14} className="text-amber-500" />
                         <span>{product.minStockLevel} ud.</span>
@@ -431,7 +537,7 @@ export function ProductsPage({
                 ))}
                 {filteredProducts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-32 text-center text-slate-500">
+                    <TableCell colSpan={10} className="h-32 text-center text-slate-500">
                       No se encontraron productos en el catálogo.
                     </TableCell>
                   </TableRow>

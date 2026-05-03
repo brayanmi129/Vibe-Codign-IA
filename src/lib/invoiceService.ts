@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import emailjs from "@emailjs/browser";
-import { SaleRecord, Store, Customer } from "../types";
+import { SaleRecord, SaleItem, Store, Customer } from "../types";
 
 /**
  * Servicio de facturación
@@ -13,7 +13,10 @@ import { SaleRecord, Store, Customer } from "../types";
 // CONFIGURACIÓN
 // ────────────────────────────────────────────────────────────────────
 
-export const TAX_RATE = 0.19; // IVA Colombia 19%
+// Tarifa por defecto (legacy). Se usa solo cuando un item no tiene snapshot
+// de taxRate y el producto tampoco tiene taxRate (productos creados antes
+// de la migración tributaria).
+export const TAX_RATE = 0.19;
 
 // EmailJS: si quieres habilitar envío de correo automático,
 // configura estas variables en tu archivo .env (raíz del proyecto):
@@ -63,18 +66,87 @@ export const generateInvoiceNumber = (existingCount: number): string => {
 };
 
 /**
- * Calcula totales (subtotal, IVA, total) a partir de items.
- * Asume que los precios unitarios YA incluyen IVA.
- * Si en tu negocio los precios NO incluyen IVA, mira la nota al final del archivo.
+ * @deprecated Usa calculateTotalsFromItems para soportar IVA por producto.
+ * Se mantiene por retrocompatibilidad — calcula como si todo fuera al 19%.
  */
 export const calculateTotals = (totalAmount: number) => {
-  // Si los precios incluyen IVA: subtotal = total / (1 + tasa)
   const subtotal = totalAmount / (1 + TAX_RATE);
   const taxAmount = totalAmount - subtotal;
   return {
     subtotal: Math.round(subtotal),
     taxAmount: Math.round(taxAmount),
     total: totalAmount,
+  };
+};
+
+/**
+ * Resuelve la tasa de IVA aplicable a un item. Orden de precedencia:
+ *   1. taxRate snapshot del item (lo que se guardó al vender).
+ *   2. fallback al 19% (para items legacy sin snapshot).
+ * NO leemos del producto vivo a propósito: la factura debe mostrar lo que
+ * realmente pagó el cliente, no lo que diga el producto hoy.
+ */
+const resolveItemTaxRate = (item: SaleItem): number => {
+  if (typeof item.taxRate === 'number') return item.taxRate;
+  return TAX_RATE;
+};
+
+export interface TaxBreakdownEntry {
+  rate: number;          // 0, 0.05, 0.19
+  taxableBase: number;   // suma de subtotales sin IVA a esa tasa
+  taxAmount: number;     // IVA causado a esa tasa
+}
+
+export interface InvoiceTotals {
+  subtotal: number;      // suma de bases gravables (sin IVA)
+  taxAmount: number;     // IVA total
+  total: number;         // total a pagar
+  breakdown: TaxBreakdownEntry[]; // desglose por tasa
+}
+
+/**
+ * Calcula totales línea por línea respetando el IVA de cada producto.
+ * Asume que unitPrice del item YA incluye IVA (precio al público).
+ * Para cada item:
+ *   subtotal_item = totalPrice / (1 + taxRate)
+ *   iva_item     = totalPrice - subtotal_item
+ *
+ * Productos excluidos / exentos (taxRate = 0) → subtotal = totalPrice, iva = 0.
+ */
+export const calculateTotalsFromItems = (items: SaleItem[]): InvoiceTotals => {
+  const buckets = new Map<number, TaxBreakdownEntry>();
+  let totalSubtotal = 0;
+  let totalTax = 0;
+  let total = 0;
+
+  for (const item of items) {
+    const rate = resolveItemTaxRate(item);
+    const subtotal = item.totalPrice / (1 + rate);
+    const tax = item.totalPrice - subtotal;
+
+    totalSubtotal += subtotal;
+    totalTax += tax;
+    total += item.totalPrice;
+
+    const entry = buckets.get(rate) ?? { rate, taxableBase: 0, taxAmount: 0 };
+    entry.taxableBase += subtotal;
+    entry.taxAmount += tax;
+    buckets.set(rate, entry);
+  }
+
+  const breakdown = Array.from(buckets.values())
+    .map(b => ({
+      rate: b.rate,
+      taxableBase: Math.round(b.taxableBase),
+      taxAmount: Math.round(b.taxAmount),
+    }))
+    .sort((a, b) => a.rate - b.rate);
+
+  return {
+    subtotal: Math.round(totalSubtotal),
+    taxAmount: Math.round(totalTax),
+    total: Math.round(total),
+    breakdown,
   };
 };
 
@@ -96,7 +168,7 @@ export const generateInvoicePdf = (payload: InvoicePdfPayload): jsPDF => {
   const { sale, store, customer } = payload;
   const doc = new jsPDF({ unit: "mm", format: "a4" });
 
-  const totals = calculateTotals(sale.totalAmount);
+  const totals = calculateTotalsFromItems(sale.items);
 
   // ─── ENCABEZADO ───────────────────────────────────────────────────
   doc.setFontSize(20);
@@ -140,16 +212,28 @@ export const generateInvoicePdf = (payload: InvoicePdfPayload): jsPDF => {
   if (customer.address) doc.text(`Dirección: ${customer.address}`, 110, 66);
 
   // ─── TABLA DE PRODUCTOS ───────────────────────────────────────────
-  const tableBody = sale.items.map((item) => [
-    item.productName,
-    String(item.quantity),
-    formatCurrency(item.unitPrice / (1 + TAX_RATE)), // Valor unitario SIN IVA
-    formatCurrency(item.totalPrice / (1 + TAX_RATE)), // Subtotal SIN IVA
-  ]);
+  // Columna IVA: muestra la tarifa aplicada por línea (ej "19%", "5%", "Excl.")
+  const taxLabel = (rate: number, category?: string): string => {
+    if (rate === 0) return category === 'exento' ? '0%' : 'Excl.';
+    return `${(rate * 100).toFixed(0)}%`;
+  };
+
+  const tableBody = sale.items.map((item) => {
+    const rate = typeof item.taxRate === 'number' ? item.taxRate : TAX_RATE;
+    const unitWithoutTax = item.unitPrice / (1 + rate);
+    const subtotalWithoutTax = item.totalPrice / (1 + rate);
+    return [
+      item.productName,
+      String(item.quantity),
+      taxLabel(rate, item.taxCategory),
+      formatCurrency(unitWithoutTax),
+      formatCurrency(subtotalWithoutTax),
+    ];
+  });
 
   autoTable(doc, {
     startY: 82,
-    head: [["Descripción", "Cant.", "Vlr. Unit. (sin IVA)", "Subtotal"]],
+    head: [["Descripción", "Cant.", "IVA", "Vlr. Unit. (sin IVA)", "Subtotal"]],
     body: tableBody,
     theme: "striped",
     headStyles: {
@@ -158,10 +242,11 @@ export const generateInvoicePdf = (payload: InvoicePdfPayload): jsPDF => {
       fontStyle: "bold",
     },
     columnStyles: {
-      0: { cellWidth: 90 },
-      1: { cellWidth: 20, halign: "center" },
-      2: { cellWidth: 35, halign: "right" },
-      3: { cellWidth: 35, halign: "right" },
+      0: { cellWidth: 80 },
+      1: { cellWidth: 16, halign: "center" },
+      2: { cellWidth: 16, halign: "center" },
+      3: { cellWidth: 34, halign: "right" },
+      4: { cellWidth: 34, halign: "right" },
     },
   });
 
@@ -178,9 +263,25 @@ export const generateInvoicePdf = (payload: InvoicePdfPayload): jsPDF => {
   doc.text("Subtotal:", totalsX, y);
   doc.text(formatCurrency(totals.subtotal), valuesX, y, { align: "right" });
 
-  y += 6;
-  doc.text(`IVA (${(TAX_RATE * 100).toFixed(0)}%):`, totalsX, y);
-  doc.text(formatCurrency(totals.taxAmount), valuesX, y, { align: "right" });
+  // Desglose por tasa (solo entradas con IVA > 0; excluido/exento se omiten para no saturar)
+  for (const entry of totals.breakdown) {
+    if (entry.taxAmount === 0) continue;
+    y += 6;
+    doc.text(`IVA (${(entry.rate * 100).toFixed(0)}%):`, totalsX, y);
+    doc.text(formatCurrency(entry.taxAmount), valuesX, y, { align: "right" });
+  }
+
+  // Si hubo productos excluidos/exentos, indicarlo (es requisito DIAN diferenciarlo)
+  const zeroBase = totals.breakdown
+    .filter(e => e.rate === 0)
+    .reduce((acc, e) => acc + e.taxableBase, 0);
+  if (zeroBase > 0) {
+    y += 6;
+    doc.setTextColor(120, 120, 120);
+    doc.text("Base excluida/exenta:", totalsX, y);
+    doc.text(formatCurrency(zeroBase), valuesX, y, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+  }
 
   y += 8;
   doc.setDrawColor(79, 70, 229);
@@ -256,7 +357,7 @@ export const sendInvoiceByEmail = async (
   }
 
   try {
-    const totals = calculateTotals(sale.totalAmount);
+    const totals = calculateTotalsFromItems(sale.items);
 
     // Construye el detalle de productos como texto (para incluir en el cuerpo)
     const itemsList = sale.items

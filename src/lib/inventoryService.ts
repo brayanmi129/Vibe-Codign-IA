@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Product, SaleRecord, AIInsight, Expense, InventoryAnalytics, InventoryStats } from "../types";
+import { Product, SaleRecord, AIInsight, Expense, InventoryAnalytics, InventoryStats, TaxCategory, TAX_CATEGORY_RATES } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -64,6 +64,85 @@ Reglas de color:
     if (result.primaryColor && result.secondaryColor && result.backgroundColor) return result as BrandColorSuggestion;
     return null;
   } catch {
+    return null;
+  }
+}
+
+// ─── AI Tax Category Suggestion ──────────────────────────────────
+// Sugiere la categoría tributaria DIAN para un producto según su nombre,
+// categoría comercial y descripción. Si Gemini no responde con algo válido,
+// devuelve null (la UI cae al default "general 19%").
+
+export interface TaxSuggestion {
+  taxCategory: TaxCategory;
+  taxRate: number;
+  reasoning: string;
+  confidence: 'alta' | 'media' | 'baja';
+}
+
+export async function suggestProductTax(
+  productName: string,
+  category?: string,
+  description?: string
+): Promise<TaxSuggestion | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+  if (!productName?.trim()) return null;
+
+  const prompt = `Eres un experto contable colombiano especializado en IVA según el Estatuto Tributario DIAN.
+Clasifica este producto en UNA de estas 4 categorías:
+
+1. "excluido" — NO causa IVA. Ejemplos: medicamentos, servicios médicos, libros, cuadernos escolares,
+   transporte público, energía eléctrica residencial, agua potable, internet residencial estratos 1-3.
+
+2. "exento" — Gravado al 0% (tarifa cero, da derecho a devolución de IVA).
+   Ejemplos: leche, huevos, carne fresca de res/cerdo/pollo, pescado fresco, queso fresco,
+   fórmulas lácteas para bebés, exportaciones.
+
+3. "reducido" — Tarifa especial del 5%. Ejemplos: café tostado o molido, chocolate de mesa,
+   azúcar, sal, pastas alimenticias, harina de trigo, aceites comestibles, sardinas/atún enlatado,
+   bicicletas hasta cierto valor, productos para discapacitados.
+
+4. "general" — Tarifa estándar del 19%. La GRAN MAYORÍA de productos: bebidas azucaradas,
+   gaseosas, snacks empacados, ropa, electrónica, electrodomésticos, perfumería, licor,
+   repuestos, herramientas, juguetes, restaurantes, etc.
+
+REGLAS:
+- Si tienes duda, prefiere "general" (es lo más común y seguro fiscalmente).
+- Productos procesados/empacados rara vez son exentos o excluidos.
+- Bebidas con azúcar añadida son "general" 19%.
+- "Confidence: baja" si el nombre es ambiguo o genérico (ej: "Producto X").
+
+Producto a clasificar:
+- Nombre: ${productName}
+- Categoría comercial: ${category || 'sin especificar'}
+- Descripción: ${description || 'sin especificar'}
+
+Responde SOLO con JSON válido en este formato exacto:
+{
+  "taxCategory": "excluido" | "exento" | "reducido" | "general",
+  "reasoning": "1-2 frases citando la regla DIAN aplicable",
+  "confidence": "alta" | "media" | "baja"
+}`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: prompt,
+      config: { responseMimeType: "application/json", maxOutputTokens: 250 },
+    });
+    const result = JSON.parse(response.text || "{}");
+    const cat = result.taxCategory as TaxCategory;
+    if (!cat || !(cat in TAX_CATEGORY_RATES)) return null;
+    return {
+      taxCategory: cat,
+      taxRate: TAX_CATEGORY_RATES[cat],
+      reasoning: typeof result.reasoning === 'string' ? result.reasoning : '',
+      confidence: (result.confidence === 'alta' || result.confidence === 'baja')
+        ? result.confidence
+        : 'media',
+    };
+  } catch (error) {
+    console.error("Tax suggestion error:", error);
     return null;
   }
 }
@@ -221,16 +300,25 @@ ${prepareBusinessContext(products, sales, expenses, storeDescription)}`;
 export async function analyzeProductImage(imageBase64: string): Promise<Partial<Product> | null> {
   if (!process.env.GEMINI_API_KEY) return null;
 
-  const prompt = `Analiza esta imagen de un producto para un sistema de inventario. 
+  const prompt = `Analiza esta imagen de un producto para un sistema de inventario en Colombia.
 Extrae la siguiente información y devuélvela SOLO en formato JSON:
 {
   "name": "Nombre sugerido del producto",
   "brand": "Marca (si es visible)",
   "category": "Categoría (ej: Bebidas, Snacks, Electrónica, Ropa, etc.)",
-  "price": 0, // Precio sugerido al consumidor (un número estimado si es común)
-  "minStockLevel": 5, // Nivel mínimo sugerido
+  "price": 0,
+  "minStockLevel": 5,
+  "taxCategory": "excluido" | "exento" | "reducido" | "general",
   "description": "Breve descripción de lo que ves"
 }
+
+Para taxCategory usa estas reglas DIAN Colombia:
+- "excluido": medicamentos, libros, transporte público, agua, energía residencial.
+- "exento": leche, huevos, carne/pescado fresco, fórmula infantil.
+- "reducido" (5%): café, chocolate, azúcar, sal, aceites, pastas, harina, atún enlatado.
+- "general" (19%): la mayoría — bebidas azucaradas, snacks, ropa, electrónica, etc.
+Si dudas, usa "general".
+
 Si no estás seguro de algo, deja el campo vacío o con un valor predeterminado coherente.`;
 
   try {
@@ -242,7 +330,12 @@ Si no estás seguro de algo, deja el campo vacío o con un valor predeterminado 
       ],
       config: { responseMimeType: "application/json" },
     });
-    return JSON.parse(response.text || "{}") as Partial<Product>;
+    const raw = JSON.parse(response.text || "{}") as Partial<Product> & { taxCategory?: TaxCategory };
+    // Si la IA devolvió taxCategory válida, derivamos taxRate
+    if (raw.taxCategory && raw.taxCategory in TAX_CATEGORY_RATES) {
+      raw.taxRate = TAX_CATEGORY_RATES[raw.taxCategory];
+    }
+    return raw;
   } catch (error) {
     console.error("Vision Analysis Error:", error);
     return null;

@@ -6,15 +6,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  Plus, 
-  Trash2, 
-  DollarSign, 
-  Receipt, 
-  ArrowDownCircle, 
+import {
+  Plus,
+  Trash2,
+  DollarSign,
+  Receipt,
+  ArrowDownCircle,
   Wallet,
   Calendar,
-  Filter
+  Filter,
+  AlertTriangle
 } from "lucide-react";
 import { 
   Dialog, 
@@ -142,15 +143,32 @@ export function FinancesPage({ expenses, analytics, onAddExpense, onDeleteExpens
           </CardHeader>
         </Card>
 
-        <Card className="bg-indigo-600 text-white border-none shadow-xl shadow-indigo-200 overflow-hidden relative group">
-          <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none group-hover:scale-110 transition-transform">
-            <Wallet size={80} className="text-white" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardDescription className="font-bold text-indigo-200 uppercase tracking-widest text-[10px]">Utilidad Neta (Estimada)</CardDescription>
-            <CardTitle className="text-2xl font-black">{formatCurrency((analytics.netProfit || 0))}</CardTitle>
-          </CardHeader>
-        </Card>
+        {(() => {
+          const coverage = analytics.profitCoverage ?? 100;
+          const missing = analytics.productsMissingCost ?? 0;
+          const isPartial = coverage < 100;
+          // Cuando hay productos sin costo, la utilidad es parcial. Pintamos
+          // distinto la card y damos el aviso explícito en lugar de inflar el número.
+          return (
+            <Card className={`${isPartial ? 'bg-amber-500' : 'bg-indigo-600'} text-white border-none shadow-xl ${isPartial ? 'shadow-amber-200' : 'shadow-indigo-200'} overflow-hidden relative group`}>
+              <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none group-hover:scale-110 transition-transform">
+                {isPartial ? <AlertTriangle size={80} className="text-white" /> : <Wallet size={80} className="text-white" />}
+              </div>
+              <CardHeader className="pb-2">
+                <CardDescription className={`font-bold uppercase tracking-widest text-[10px] ${isPartial ? 'text-amber-100' : 'text-indigo-200'}`}>
+                  {isPartial ? `Utilidad Parcial · Cobertura ${coverage}%` : 'Utilidad Neta'}
+                </CardDescription>
+                <CardTitle className="text-2xl font-black">{formatCurrency(analytics.netProfit || 0)}</CardTitle>
+                {isPartial && (
+                  <p className="text-[11px] font-medium text-amber-50/90 leading-relaxed mt-2">
+                    Falta el precio de costo en <span className="font-bold">{missing}</span> producto{missing !== 1 ? 's' : ''}.
+                    El cálculo solo incluye lo que sí tiene costo registrado.
+                  </p>
+                )}
+              </CardHeader>
+            </Card>
+          );
+        })()}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
