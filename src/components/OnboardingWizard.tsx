@@ -169,19 +169,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
 
   const firstName = (currentUser?.displayName || data.adminInfo?.displayName || '').split(' ')[0];
 
-  const AiMessage = ({ message }: { message: string }) => (
-    <motion.div
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex items-start gap-3 bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl p-3.5"
-    >
-      <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm shadow-indigo-200">
-        <Sparkles size={12} className="text-white" />
-      </div>
-      <p className="text-sm text-indigo-800 leading-relaxed">{message}</p>
-    </motion.div>
-  );
-
   return (
     <div className="min-h-screen flex flex-col bg-white font-sans">
       {/* Top bar */}
@@ -260,7 +247,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
               {/* ── Step 1: Store name ── */}
               {step === 1 && (
                 <div className="space-y-6">
-                  <AiMessage message="¡Hola! Soy ARIA, tu asistente de negocios con IA. Voy a ayudarte a configurar tu tienda. Para empezar, ¿cómo se llama tu empresa?" />
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Tu negocio</p>
                     <h2 className="text-3xl font-bold text-slate-900 leading-tight">
@@ -290,7 +276,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
               {/* ── Step 2: Business type ── */}
               {step === 2 && (
                 <div className="space-y-6">
-                  <AiMessage message={`"${data.storeName || 'Tu empresa'}"... ¡me gusta! Ahora cuéntame a qué se dedica. Elige una categoría y, si quieres, descríbelo con tus palabras — eso me ayuda a darte mejores consejos.`} />
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Categoría</p>
                     <h2 className="text-3xl font-bold text-slate-900 leading-tight">
@@ -612,11 +597,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
               {/* ── Step 5: AI description ── */}
               {step === 5 && (
                 <div className="space-y-6">
-                  <AiMessage message={
-                    data.aiDescription
-                      ? `Ya me contaste algo sobre ${data.storeName}. Puedes ampliar la información aquí — cuanto más sepa, mejores análisis y recomendaciones podré darte.`
-                      : `Casi terminamos de conocernos. Cuéntame todo sobre ${data.storeName || 'tu negocio'}: qué vendes, a quién, cómo y dónde.`
-                  } />
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Contexto IA</p>
                     <h2 className="text-3xl font-bold text-slate-900 leading-tight">
@@ -768,7 +748,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
               {/* ── Step 7: Branches ── */}
               {step === 7 && (
                 <div className="space-y-6">
-                  <AiMessage message={`¡Ya casi! Si ${data.storeName} tiene varias sedes, locales o bodegas, agrégalas aquí. Así cada una tendrá su propio control de stock y ventas.`} />
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Sucursales</p>
                     <h2 className="text-3xl font-bold text-slate-900 leading-tight">
@@ -864,7 +843,6 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                       </p>
                     </div>
                   </div>
-                  <AiMessage message={`¡Perfecto! Ya conozco ${data.storeName}${data.aiDescription ? ' y entiendo bien tu negocio' : ''}. Desde hoy voy a analizar tu inventario y ventas para darte recomendaciones personalizadas. ¡Vamos a crecer juntos!`} />
 
                   <div className="bg-slate-50 rounded-2xl p-5 text-left space-y-3.5">
                     {[
@@ -903,7 +881,7 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                       Crear mi tienda <Sparkles size={18} />
                     </span>
                     <motion.div
-                      className="absolute inset-0 bg-white/10"
+                      className="absolute inset-0 bg-white/10 pointer-events-none"
                       initial={{ x: '-100%' }}
                       animate={{ x: '100%' }}
                       transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}

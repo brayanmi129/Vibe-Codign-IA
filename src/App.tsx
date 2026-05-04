@@ -528,18 +528,6 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       const adminEmail = onboardingData.adminInfo?.email || user?.email;
       if (!adminEmail) throw new Error("Falta el email del administrador.");
 
-      // Enforce 1 user = 1 store. Skip the check for the demo seed account.
-      if (adminEmail !== "admin@stockmaster.ai") {
-        const reason = await emailFreeReason(adminEmail);
-        if (reason) throw new Error(`${reason} No puedes crear una tienda con esa cuenta.`);
-      }
-
-      // Refuse pre-registering employees whose email is already used elsewhere.
-      for (const emp of onboardingData.employees) {
-        const reason = await emailFreeReason(emp.email);
-        if (reason) throw new Error(`Empleado "${emp.email}": ${reason}`);
-      }
-
       let activeUser = user;
       if (!activeUser && onboardingData.adminInfo?.password) {
         if (onboardingData.adminInfo.email === "admin@stockmaster.ai") {
@@ -567,6 +555,26 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         await setDoc(doc(db, "users", activeUser.uid), { uid: activeUser.uid, displayName: onboardingData.adminInfo.displayName, email: onboardingData.adminInfo.email, createdAt: new Date().toISOString() }, { merge: true });
       }
       if (!activeUser) throw new Error("Error de autenticación");
+
+      // Cross-tenant validation runs HERE — user is now authenticated so the
+      // collectionGroup query against /members has the rights it needs. Skip
+      // for the demo seed account.
+      if (adminEmail !== "admin@stockmaster.ai") {
+        const reason = await emailFreeReason(adminEmail);
+        if (reason) {
+          // Roll back the auth account we just created so the user isn't
+          // stuck signed in to a half-created identity.
+          if (auth.currentUser && auth.currentUser.email === adminEmail && !auth.currentUser.providerData.some(p => p.providerId === 'google.com')) {
+            await auth.currentUser.delete().catch(() => {});
+          }
+          throw new Error(`${reason} No puedes crear una tienda con esa cuenta.`);
+        }
+      }
+
+      for (const emp of onboardingData.employees) {
+        const reason = await emailFreeReason(emp.email);
+        if (reason) throw new Error(`Empleado "${emp.email}": ${reason}`);
+      }
 
       const storeId = `store_${Math.random().toString(36).substr(2, 9)}`;
       const newStore: Store = { id: storeId, name: onboardingData.storeName, businessType: onboardingData.businessType, description: onboardingData.aiDescription, ownerId: activeUser.uid, createdAt: new Date().toISOString(), branding: { ...onboardingData.branding, textColor: '#0f172a', textSecondaryColor: '#64748b' } };
@@ -1180,20 +1188,28 @@ const handleDownloadInvoice = () => {
   if (!user || !currentStore) {
     // Onboarding: accessible with or without user (Google sign-in happens inside wizard)
     if (authView === "onboarding") {
-      return <OnboardingWizard currentUser={user} onComplete={handleOnboardingComplete} onGoogleSignIn={handleGoogleLogin} onBack={() => setAuthViewTracked("login")} />;
+      return (
+        <>
+          <Toaster position="top-right" />
+          <OnboardingWizard currentUser={user} onComplete={handleOnboardingComplete} onGoogleSignIn={handleGoogleLogin} onBack={() => setAuthViewTracked("login")} />
+        </>
+      );
     }
     if (!user && authView === "login") {
       return (
-        <LoginPage
-          setAuthView={setAuthViewTracked}
-          authEmail={authEmail}
-          setAuthEmail={setAuthEmail}
-          authPassword={authPassword}
-          setAuthPassword={setAuthPassword}
-          isAuthLoading={isAuthLoading}
-          handleEmailLogin={handleEmailLogin}
-          handleGoogleLogin={handleGoogleLogin}
-        />
+        <>
+          <Toaster position="top-right" />
+          <LoginPage
+            setAuthView={setAuthViewTracked}
+            authEmail={authEmail}
+            setAuthEmail={setAuthEmail}
+            authPassword={authPassword}
+            setAuthPassword={setAuthPassword}
+            isAuthLoading={isAuthLoading}
+            handleEmailLogin={handleEmailLogin}
+            handleGoogleLogin={handleGoogleLogin}
+          />
+        </>
       );
     }
     return (
