@@ -35,6 +35,7 @@ import {
   addSuperAdmin,
   removeSuperAdmin,
   removeMemberFromStore,
+  emailFreeReason,
 } from "../lib/superAdminService";
 
 interface SuperAdminPageProps {
@@ -63,6 +64,8 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   const [newSaEmail, setNewSaEmail] = React.useState("");
+  const [newSaAuthMethod, setNewSaAuthMethod] = React.useState<'google' | 'email'>('google');
+  const [newSaPassword, setNewSaPassword] = React.useState("");
   const [isAddingSa, setIsAddingSa] = React.useState(false);
   const [removingSaEmail, setRemovingSaEmail] = React.useState<string | null>(null);
 
@@ -134,11 +137,19 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
     const email = newSaEmail.trim().toLowerCase();
     if (!email) return;
     if (superAdmins.includes(email)) { toast.error("Ya es Super Admin"); return; }
+    if (newSaAuthMethod === 'email' && (!newSaPassword || newSaPassword.length < 6)) {
+      toast.error("La contraseña temporal debe tener al menos 6 caracteres.");
+      return;
+    }
     setIsAddingSa(true);
     try {
-      await addSuperAdmin(email);
+      const reason = await emailFreeReason(email);
+      if (reason) { toast.error(reason); return; }
+      await addSuperAdmin(email, newSaAuthMethod, newSaAuthMethod === 'email' ? newSaPassword : undefined);
       setSuperAdmins(prev => [...prev, email]);
       setNewSaEmail("");
+      setNewSaPassword("");
+      setNewSaAuthMethod('google');
       toast.success(`${email} ahora es Super Admin`);
     } catch {
       toast.error("Error al añadir Super Admin");
@@ -590,27 +601,79 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
                 <CardContent className="p-10 pt-4 space-y-12">
                   <form onSubmit={handleAddSuperAdmin} className="space-y-4 bg-slate-50 p-8 rounded-[32px] border border-slate-100">
                     <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Añadir nuevo Super Administrador</p>
-                    <div className="flex flex-col md:flex-row gap-4">
-                      <div className="relative flex-1">
-                        <Mail size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
+
+                    <div className="relative">
+                      <Mail size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        type="email"
+                        placeholder="email@stockmaster.pro"
+                        value={newSaEmail}
+                        onChange={e => setNewSaEmail(e.target.value)}
+                        className="pl-14 h-14 bg-white border-none rounded-2xl text-base font-black text-slate-900 placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Método de acceso</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => { setNewSaAuthMethod('google'); setNewSaPassword(''); }}
+                          className={`flex items-center justify-center gap-2 h-12 rounded-2xl border-2 text-sm font-bold transition-all ${
+                            newSaAuthMethod === 'google'
+                              ? 'border-indigo-500 bg-white text-indigo-700 shadow-sm'
+                              : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                          }`}
+                        >
+                          <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="" />
+                          Google
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewSaAuthMethod('email')}
+                          className={`flex items-center justify-center gap-2 h-12 rounded-2xl border-2 text-sm font-bold transition-all ${
+                            newSaAuthMethod === 'email'
+                              ? 'border-indigo-500 bg-white text-indigo-700 shadow-sm'
+                              : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                          }`}
+                        >
+                          <Mail size={14} />
+                          Email/Contraseña
+                        </button>
+                      </div>
+                    </div>
+
+                    {newSaAuthMethod === 'email' && (
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Contraseña temporal</p>
                         <Input
-                          type="email"
-                          placeholder="email@stockmaster.pro"
-                          value={newSaEmail}
-                          onChange={e => setNewSaEmail(e.target.value)}
-                          className="pl-14 h-14 bg-white border-none rounded-2xl text-base font-black text-slate-900 placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm"
+                          type="password"
+                          placeholder="Mínimo 6 caracteres"
+                          value={newSaPassword}
+                          onChange={e => setNewSaPassword(e.target.value)}
+                          minLength={6}
+                          className="h-14 bg-white border-none rounded-2xl text-base font-black text-slate-900 placeholder:text-slate-400 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm px-5"
                           required
                         />
+                        <p className="text-[10px] text-slate-400 mt-2 px-1 leading-relaxed">
+                          Compártela verbalmente con el nuevo super admin. Al iniciar sesión por primera vez podrá cambiarla en Ajustes.
+                        </p>
                       </div>
-                      <Button
-                        type="submit"
-                        disabled={isAddingSa || !newSaEmail.trim()}
-                        className="h-14 px-8 bg-indigo-600 border-2 border-indigo-600 hover:bg-indigo-700 hover:border-indigo-700 text-white rounded-[18px] font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-100 active:scale-[0.98] transition-all gap-4 disabled:opacity-30"
-                      >
-                        {isAddingSa ? <RefreshCw size={20} className="animate-spin" /> : <UserPlus size={20} />}
-                        Autorizar
-                      </Button>
-                    </div>
+                    )}
+
+                    <Button
+                      type="submit"
+                      disabled={
+                        isAddingSa ||
+                        !newSaEmail.trim() ||
+                        (newSaAuthMethod === 'email' && newSaPassword.length < 6)
+                      }
+                      className="w-full h-14 px-8 bg-indigo-600 border-2 border-indigo-600 hover:bg-indigo-700 hover:border-indigo-700 text-white rounded-[18px] font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-100 active:scale-[0.98] transition-all gap-4 disabled:opacity-30"
+                    >
+                      {isAddingSa ? <RefreshCw size={20} className="animate-spin" /> : <UserPlus size={20} />}
+                      Autorizar
+                    </Button>
                   </form>
 
                   <div className="space-y-6">

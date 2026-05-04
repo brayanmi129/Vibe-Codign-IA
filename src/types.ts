@@ -33,14 +33,27 @@ export interface Store {
 }
 
 export interface StoreMember {
-  userId: string;
+  userId: string;                  // empty string until first login binds a Firebase UID
   storeId: string;
   role: UserRole;
   email: string;
   displayName?: string;
   joinedAt?: string;
   branchId?: string;
-  authMethod?: 'google' | 'email';
+  authMethod: 'google' | 'email';  // chosen by whoever pre-registered the user
+  // Cleartext temp password set by the admin for first-time email/password login.
+  // Removed from the doc the moment the Firebase Auth account is created.
+  tempPassword?: string;
+}
+
+// Stored at superadmins/{email}. Mirrors StoreMember's auth handshake so a new super
+// admin's first login works without a self-registration UI (only existing super admins
+// can create new ones).
+export interface SuperAdminRecord {
+  email: string;
+  authMethod: 'google' | 'email';
+  tempPassword?: string;
+  createdAt: string;
 }
 
 // ── Categorías tributarias DIAN (Colombia) ────────────────────────

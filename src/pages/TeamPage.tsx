@@ -66,7 +66,7 @@ export function TeamPage({
                 <DialogHeader>
                   <DialogTitle>Agregar Nuevo Miembro</DialogTitle>
                   <DialogDescription>
-                    Agrega un miembro al equipo de {currentStore?.name}.
+                    El miembro no se registra solo: tú defines su email y método de acceso. Si eliges contraseña, compártela verbalmente; él podrá cambiarla luego en Ajustes.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
@@ -134,7 +134,7 @@ export function TeamPage({
                         </button>
                       </div>
                       <p className="text-[11px] text-slate-400 leading-relaxed">
-                        El miembro usará este email y contraseña para registrarse. Puedes dejarla vacía si prefieres que él mismo cree su contraseña.
+                        El miembro usará este email y contraseña para iniciar sesión por primera vez. Mínimo 6 caracteres. Después podrá cambiarla en Ajustes.
                       </p>
                     </div>
                   )}

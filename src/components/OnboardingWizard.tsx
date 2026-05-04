@@ -144,10 +144,12 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
   };
 
   const handleAddEmployee = () => {
-    if (newEmployee.email && newEmployee.displayName) {
-      setData(prev => ({ ...prev, employees: [...prev.employees, { ...newEmployee }] }));
-      setNewEmployee({ email: '', role: 'employee', displayName: '', authMethod: 'email', password: '' });
+    if (!newEmployee.email || !newEmployee.displayName) return;
+    if (newEmployee.authMethod === 'email' && (!newEmployee.password || newEmployee.password.length < 6)) {
+      return; // Disabled state in the UI already prevents this; defensive check.
     }
+    setData(prev => ({ ...prev, employees: [...prev.employees, { ...newEmployee }] }));
+    setNewEmployee({ email: '', role: 'employee', displayName: '', authMethod: 'email', password: '' });
   };
 
   const removeEmployee = (idx: number) =>
@@ -716,7 +718,11 @@ export function OnboardingWizard({ onComplete, currentUser, onGoogleSignIn, onBa
                         variant="outline"
                         className="h-11 w-11 p-0 rounded-xl flex-shrink-0"
                         onClick={handleAddEmployee}
-                        disabled={!newEmployee.email || !newEmployee.displayName}
+                        disabled={
+                          !newEmployee.email ||
+                          !newEmployee.displayName ||
+                          (newEmployee.authMethod === 'email' && (newEmployee.password?.length ?? 0) < 6)
+                        }
                       >
                         <Plus size={18} />
                       </Button>

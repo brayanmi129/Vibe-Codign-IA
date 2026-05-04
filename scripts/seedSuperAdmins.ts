@@ -52,10 +52,13 @@ async function run() {
     console.log("  ✅ Login OK\n");
 
     for (const sa of SUPER_ADMINS) {
-      // Document ID = email (no UID) → funciona con cualquier proveedor de auth
+      // Document ID = email (no UID). Estos super admins entran con su cuenta
+      // institucional Google, por eso authMethod='google'. Para crear uno con
+      // email/contraseña, usa el botón "Autorizar" en SuperAdminPage.
       await setDoc(doc(db, "superadmins", sa.email), {
         email:       sa.email,
         displayName: sa.displayName,
+        authMethod:  "google",
         createdAt:   new Date().toISOString(),
       });
       console.log(`  ✅ superadmins/${sa.email}`);
@@ -67,9 +70,8 @@ async function run() {
     for (const sa of SUPER_ADMINS) {
       console.log(`   ${sa.email}  (${sa.displayName})`);
     }
-    console.log("\n   Login híbrido activo:");
-    console.log("   • Google OAuth (cuenta universitaria)  ✓");
-    console.log("   • Email + contraseña (misma dirección) ✓");
+    console.log("\n   Estos super admins entran con Google (institucional).");
+    console.log("   Para crear super admins email/contraseña, usa la UI.");
     console.log("═══════════════════════════════════════════════════\n");
     process.exit(0);
   } catch (error) {

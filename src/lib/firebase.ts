@@ -16,7 +16,7 @@ import {
   OAuthCredential,
   User
 } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, query, where, orderBy, onSnapshot, Timestamp, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, collectionGroup, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, query, where, orderBy, onSnapshot, Timestamp, addDoc, serverTimestamp } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -38,6 +38,7 @@ export {
   linkWithCredential,
   GoogleAuthProvider,
   collection,
+  collectionGroup,
   doc,
   setDoc,
   updateDoc,

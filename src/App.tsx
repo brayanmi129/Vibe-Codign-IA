@@ -22,11 +22,19 @@ import {
   auth, db, googleProvider, signInWithPopup, signInWithEmailAndPassword,
   signInAnonymously, createUserWithEmailAndPassword, updateProfile, updatePassword,
   reauthenticateWithCredential, EmailAuthProvider, signOut,
-  onAuthStateChanged, linkWithCredential, GoogleAuthProvider,
+  onAuthStateChanged,
   collection, doc, setDoc, updateDoc, deleteDoc,
   getDoc, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp,
-  handleFirestoreError, OperationType, User, OAuthCredential,
+  handleFirestoreError, OperationType, User,
 } from "./lib/firebase";
+import {
+  checkIsSuperAdmin,
+  getSuperAdminRecord,
+  findMembershipByEmail,
+  emailFreeReason,
+  bindMemberToUser,
+  clearSuperAdminTempPassword,
+} from "./lib/superAdminService";
 import {
   Product, SaleItem, SaleRecord, InventoryStats, RestockRecord,
   Store, UserRole, StoreMember, Branch, TempStoreSettings, Expense, InventoryAnalytics,
@@ -47,7 +55,6 @@ import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard"
 import { NavItem } from "./components/NavItem";
 import { generateDemoData } from "./lib/demoData";
 import { generateProductCode } from "./lib/formatters";
-import { checkIsSuperAdmin } from "./lib/superAdminService";
 import { getContrastColor } from "./lib/utils";
 import { SuperAdminPage } from "./pages/SuperAdminPage";
 
@@ -103,19 +110,12 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
 
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
-  // Account linking state (hybrid login: Google OAuth ↔ email/password)
-  const [pendingLinkEmail, setPendingLinkEmail] = useState('');
-  const [pendingLinkCredential, setPendingLinkCredential] = useState<OAuthCredential | null>(null);
-  const [linkPassword, setLinkPassword] = useState('');
-  const [isLinkingAccount, setIsLinkingAccount] = useState(false);
-
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
-  const [authDisplayName, setAuthDisplayName] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
-  const [authView, setAuthView] = useState<"login" | "signup" | "onboarding">("login");
-  const authViewRef = React.useRef<"login" | "signup" | "onboarding">("login");
-  const setAuthViewTracked = (v: "login" | "signup" | "onboarding") => {
+  const [authView, setAuthView] = useState<"login" | "onboarding">("login");
+  const authViewRef = React.useRef<"login" | "onboarding">("login");
+  const setAuthViewTracked = (v: "login" | "onboarding") => {
     authViewRef.current = v;
     setAuthView(v);
   };
@@ -329,59 +329,95 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       }
       setUser(currentUser);
       setIsAuthReady(true);
-      if (currentUser) {
-        const superAdmin = await checkIsSuperAdmin(currentUser.email || '');
-        if (superAdmin) {
-          setIsSuperAdmin(true);
-          setIsStoreLoading(false);
-          return;
-        }
-        try {
-          const q = query(collection(db, "users", currentUser.uid, "userStores"));
-          const qSnapshot = await getDocs(q);
-          const storesIds = qSnapshot.docs.map(d => d.id);
-          if (storesIds.length > 0) {
-            const storeDocs = await Promise.all(storesIds.map(id => getDoc(doc(db, "stores", id))));
-            const storesData = storeDocs.map(d => ({ ...d.data(), id: d.id } as Store)).filter(s => s.name);
-            setUserStores(storesData);
-            const savedStoreId = localStorage.getItem("lastStoreId");
-            handleSelectStore(storesData.find(s => s.id === savedStoreId) ?? storesData[0]);
-          } else {
-            // Check if user has a pending store invitation
-            const userEmail = currentUser.email;
-            if (userEmail) {
-              const inviteKey = userEmail.replace(/\./g, "_");
-              const inviteDoc = await getDoc(doc(db, "userInvitations", inviteKey));
-              if (inviteDoc.exists()) {
-                const invite = inviteDoc.data();
-                await setDoc(doc(db, "users", currentUser.uid, "userStores", invite.storeId), { role: invite.role });
-                await updateDoc(doc(db, "stores", invite.storeId, "members", inviteKey), { userId: currentUser.uid });
-                await deleteDoc(doc(db, "userInvitations", inviteKey));
-                const storeDoc = await getDoc(doc(db, "stores", invite.storeId));
-                if (storeDoc.exists()) {
-                  const storeData = { ...storeDoc.data(), id: storeDoc.id } as Store;
-                  setUserStores([storeData]);
-                  handleSelectStore(storeData);
-                  return;
-                }
-              }
-            }
-            // No stores, no invitation — only go to onboarding if not already there
-            if (authViewRef.current !== "onboarding") {
-              setAuthViewTracked("onboarding");
-            }
-          }
-        } catch {
-          if (authViewRef.current !== "onboarding") {
-            setAuthViewTracked("onboarding");
-          }
-        }
-      } else {
+      if (!currentUser) {
         setAuthViewTracked("login");
         setCurrentStore(null);
         setUserStores([]);
         setMemberRole(null);
         setIsSuperAdmin(false);
+        return;
+      }
+
+      // Onboarding-in-progress signs in via Google to capture admin identity, then
+      // the wizard finishes the store creation in handleOnboardingComplete. Don't
+      // run member-lookup here or we'll bounce them out before they can finish.
+      if (authViewRef.current === "onboarding") {
+        setIsStoreLoading(false);
+        return;
+      }
+
+      const userEmail = currentUser.email || '';
+      const usedGoogle = (currentUser.providerData || []).some((p: any) => p.providerId === 'google.com');
+
+      // 1) Super admin check (highest priority — bypasses tenant resolution)
+      const saRecord = await getSuperAdminRecord(userEmail);
+      if (saRecord) {
+        // Enforce the auth-method the super admin was registered with.
+        if (saRecord.authMethod === 'google' && !usedGoogle) {
+          toast.error("Tu cuenta de Super Admin está configurada para Google. Cierra sesión y entra con Google.");
+          await signOut(auth);
+          return;
+        }
+        if (saRecord.authMethod === 'email' && usedGoogle) {
+          toast.error("Tu cuenta de Super Admin está configurada para email/contraseña.");
+          await signOut(auth);
+          return;
+        }
+        if (saRecord.tempPassword) {
+          await clearSuperAdminTempPassword(userEmail).catch(() => {});
+        }
+        setIsSuperAdmin(true);
+        setIsStoreLoading(false);
+        return;
+      }
+
+      // 2) Tenant member resolution — find this user's pre-registered membership.
+      try {
+        const membership = await findMembershipByEmail(userEmail);
+        if (!membership) {
+          toast.error("Tu cuenta no está vinculada a ninguna tienda. Pide a tu admin que te agregue.");
+          await signOut(auth);
+          return;
+        }
+
+        // Enforce the method the admin chose for this employee/admin.
+        if (membership.authMethod === 'google' && !usedGoogle) {
+          toast.error("Tu admin configuró acceso por Google. Cierra sesión e ingresa con Google.");
+          await signOut(auth);
+          return;
+        }
+        if (membership.authMethod === 'email' && usedGoogle) {
+          toast.error("Tu admin configuró acceso por email/contraseña.");
+          await signOut(auth);
+          return;
+        }
+
+        // First-time bind: write the Firebase UID and clear the temp password.
+        if (!membership.userId) {
+          const emailKey = userEmail.replace(/\./g, "_");
+          await bindMemberToUser(membership.storeId, emailKey, currentUser.uid);
+        }
+
+        // Mirror the membership in users/{uid}/userStores for fast subsequent reads.
+        await setDoc(
+          doc(db, "users", currentUser.uid, "userStores", membership.storeId),
+          { role: membership.role },
+          { merge: true }
+        );
+
+        const storeDoc = await getDoc(doc(db, "stores", membership.storeId));
+        if (!storeDoc.exists()) {
+          toast.error("La tienda asociada ya no existe.");
+          await signOut(auth);
+          return;
+        }
+        const storeData = { ...storeDoc.data(), id: storeDoc.id } as Store;
+        setUserStores([storeData]);
+        await handleSelectStore(storeData);
+      } catch (err) {
+        console.error('Error resolving user membership', err);
+        toast.error("Error al resolver tu cuenta. Intenta de nuevo.");
+        await signOut(auth);
       }
     });
     return () => unsubscribe();
@@ -483,6 +519,21 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
   const handleOnboardingComplete = async (onboardingData: OnboardingData) => {
     setIsStoreLoading(true);
     try {
+      const adminEmail = onboardingData.adminInfo?.email || user?.email;
+      if (!adminEmail) throw new Error("Falta el email del administrador.");
+
+      // Enforce 1 user = 1 store. Skip the check for the demo seed account.
+      if (adminEmail !== "admin@stockmaster.ai") {
+        const reason = await emailFreeReason(adminEmail);
+        if (reason) throw new Error(`${reason} No puedes crear una tienda con esa cuenta.`);
+      }
+
+      // Refuse pre-registering employees whose email is already used elsewhere.
+      for (const emp of onboardingData.employees) {
+        const reason = await emailFreeReason(emp.email);
+        if (reason) throw new Error(`Empleado "${emp.email}": ${reason}`);
+      }
+
       let activeUser = user;
       if (!activeUser && onboardingData.adminInfo?.password) {
         if (onboardingData.adminInfo.email === "admin@stockmaster.ai") {
@@ -514,14 +565,34 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       const storeId = `store_${Math.random().toString(36).substr(2, 9)}`;
       const newStore: Store = { id: storeId, name: onboardingData.storeName, businessType: onboardingData.businessType, description: onboardingData.aiDescription, ownerId: activeUser.uid, createdAt: new Date().toISOString(), branding: { ...onboardingData.branding, textColor: '#0f172a', textSecondaryColor: '#64748b' } };
       await setDoc(doc(db, "stores", storeId), newStore);
-      // Store admin member by email (consistent with employee lookup)
+
+      const adminAuthMethod: 'google' | 'email' = onboardingData.adminInfo?.authMethod || 'google';
       const adminKey = activeUser.email!.replace(/\./g, "_");
-      await setDoc(doc(db, "stores", storeId, "members", adminKey), { userId: activeUser.uid, storeId, role: "admin", email: activeUser.email!, displayName: activeUser.displayName || activeUser.email?.split("@")[0] });
+      await setDoc(doc(db, "stores", storeId, "members", adminKey), {
+        userId: activeUser.uid,
+        storeId,
+        role: "admin",
+        email: activeUser.email!,
+        displayName: activeUser.displayName || activeUser.email?.split("@")[0],
+        authMethod: adminAuthMethod,
+        joinedAt: new Date().toISOString(),
+      });
+
       for (const emp of onboardingData.employees) {
         const empKey = emp.email.replace(/\./g, "_");
-        await setDoc(doc(db, "stores", storeId, "members", empKey), { ...emp, storeId, userId: "", joinedAt: new Date().toISOString() });
-        // Store invitation so employee can be auto-linked on first login
-        await setDoc(doc(db, "userInvitations", empKey), { storeId, role: emp.role, email: emp.email, displayName: emp.displayName, authMethod: emp.authMethod });
+        const memberDoc: any = {
+          userId: "",
+          storeId,
+          role: emp.role,
+          email: emp.email,
+          displayName: emp.displayName,
+          authMethod: emp.authMethod,
+          joinedAt: new Date().toISOString(),
+        };
+        if (emp.authMethod === 'email' && emp.password) {
+          memberDoc.tempPassword = emp.password;
+        }
+        await setDoc(doc(db, "stores", storeId, "members", empKey), memberDoc);
       }
       await setDoc(doc(db, "users", activeUser.uid, "userStores", storeId), { role: "admin" });
 
@@ -563,7 +634,7 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
   };
 
   // ─── Auth error messages ──────────────────────────────────────────
-  const getAuthError = (error: any, mode: 'login' | 'signup' | 'google' | 'onboarding'): string | null => {
+  const getAuthError = (error: any, mode: 'login' | 'google' | 'onboarding'): string | null => {
     const code = error?.code as string | undefined;
     switch (code) {
       case 'auth/invalid-email':
@@ -572,9 +643,7 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         return 'No existe ninguna cuenta con este email.';
       case 'auth/wrong-password':
       case 'auth/invalid-credential':
-        return mode === 'login'
-          ? 'Contraseña incorrecta. ¿Quizás te registraste con Google?'
-          : 'Contraseña incorrecta.';
+        return 'Contraseña incorrecta.';
       case 'auth/email-already-in-use':
         return 'Ya existe una cuenta con este email. Intenta iniciar sesión.';
       case 'auth/weak-password':
@@ -586,93 +655,101 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       case 'auth/user-disabled':
         return 'Esta cuenta ha sido deshabilitada. Contacta al administrador.';
       case 'auth/operation-not-allowed':
-        return mode === 'signup'
-          ? 'El registro por email está deshabilitado. Usa Google u otro método.'
-          : 'Este método de acceso no está habilitado.';
+        return 'Este método de acceso no está habilitado.';
       case 'auth/popup-closed-by-user':
       case 'auth/cancelled-popup-request':
-        return null; // user cancelled intentionally, no toast needed
+        return null;
       case 'auth/popup-blocked':
         return 'El popup fue bloqueado. Permite ventanas emergentes para este sitio.';
       case 'auth/account-exists-with-different-credential':
-        return null; // handled separately (link dialog)
+        return 'Ya existe una cuenta con ese email usando otro método. Usa el método configurado por tu admin.';
       default:
         return mode === 'google' ? 'Error al iniciar sesión con Google.' : 'Error de autenticación. Intenta de nuevo.';
     }
   };
 
-  const handleEmailAuth = async (e: React.FormEvent, mode: "login" | "signup") => {
+  // Email/password login. Public registration is disabled — only admins (via
+  // onboarding) and pre-registered users (via /superadmins/* or stores/.../members/*)
+  // can sign in. If Firebase Auth doesn't have an account yet but a pre-registration
+  // exists with matching authMethod='email' and tempPassword, we create the
+  // account on-the-fly and clean the temp password afterwards.
+  const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authEmail || !authPassword) return toast.error("Completa email y contraseña.");
-    if (mode === "signup" && !authDisplayName.trim()) return toast.error("Ingresa tu nombre completo.");
+
+    // Demo seed admin shortcut: bypass pre-registration check.
     if (authEmail === "admin@stockmaster.ai" && authPassword === "Admin#123") {
       setIsAuthLoading(true);
       try {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
         toast.success("¡Bienvenido, Admin!");
-      } catch (err: any) {
+      } catch {
         toast.error("Usuario no encontrado. Ejecuta primero: npm run seed");
       } finally { setIsAuthLoading(false); }
       return;
     }
+
     setIsAuthLoading(true);
     try {
-      if (mode === "signup") {
-        const result = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-        await updateProfile(result.user, { displayName: authDisplayName });
-        await setDoc(doc(db, "users", result.user.uid), { uid: result.user.uid, displayName: authDisplayName, email: authEmail, createdAt: new Date().toISOString() }, { merge: true });
-        toast.success("Cuenta creada. Bienvenido!");
-      } else {
+      // Try regular sign-in first (account already exists in Firebase Auth).
+      try {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
         toast.success("Sesión iniciada. Bienvenido!");
+        return;
+      } catch (signInErr: any) {
+        // Only fall through for "user does not exist yet" — wrong-password etc. is fatal.
+        if (signInErr.code !== 'auth/user-not-found') {
+          const msg = getAuthError(signInErr, 'login');
+          if (msg) toast.error(msg);
+          return;
+        }
       }
-    } catch (error: any) {
-      const msg = getAuthError(error, mode === "signup" ? "signup" : "login");
-      if (msg) toast.error(msg);
+
+      // Account doesn't exist — verify a pre-registration matches before creating.
+      const saRecord = await getSuperAdminRecord(authEmail);
+      const membership = saRecord ? null : await findMembershipByEmail(authEmail);
+      const preReg = saRecord || membership;
+
+      if (!preReg) {
+        toast.error("No tienes acceso. Pídele a tu admin que te agregue al equipo.");
+        return;
+      }
+      if (preReg.authMethod !== 'email') {
+        toast.error("Tu cuenta está configurada para Google. Usa el botón de Google.");
+        return;
+      }
+      if (!preReg.tempPassword || preReg.tempPassword !== authPassword) {
+        toast.error("Contraseña temporal incorrecta. Verifícala con tu admin.");
+        return;
+      }
+
+      // Pre-registration matches → create the Firebase Auth account.
+      // onAuthStateChanged will then bind the membership and clear the temp password.
+      try {
+        await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        toast.success("Cuenta activada. ¡Bienvenido! Cambia tu contraseña en Ajustes.");
+      } catch (createErr: any) {
+        // Defensive: if creation fails for any reason we don't leak the auth state.
+        if (auth.currentUser) await auth.currentUser.delete().catch(() => {});
+        const msg = getAuthError(createErr, 'login');
+        toast.error(msg || "Error al activar tu cuenta. Intenta de nuevo.");
+      }
     } finally {
       setIsAuthLoading(false);
     }
   };
 
+  // Google sign-in. Onboarding flow is allowed to bypass the pre-registration
+  // check (the wizard captures the admin's identity here and creates the store
+  // afterwards). Regular logins must match a super admin or a member entry
+  // configured with authMethod='google'.
   const handleGoogleLogin = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       await setDoc(doc(db, "users", result.user.uid), { uid: result.user.uid, displayName: result.user.displayName, email: result.user.email, photoURL: result.user.photoURL, lastLogin: new Date().toISOString() }, { merge: true });
     } catch (error: any) {
-      if (error.code === 'auth/account-exists-with-different-credential') {
-        const credential = GoogleAuthProvider.credentialFromError(error);
-        const email = error.customData?.email || '';
-        setPendingLinkEmail(email);
-        setPendingLinkCredential(credential);
-        setLinkPassword('');
-      } else {
-        const msg = getAuthError(error, 'google');
-        if (msg) toast.error(msg);
-      }
-    }
-  };
-
-  const handleLinkAccounts = async () => {
-    if (!pendingLinkEmail || !pendingLinkCredential || !linkPassword) return;
-    setIsLinkingAccount(true);
-    try {
-      // Sign in with existing email/password account
-      const result = await signInWithEmailAndPassword(auth, pendingLinkEmail, linkPassword);
-      // Link the Google credential to this account
-      await linkWithCredential(result.user, pendingLinkCredential);
-      // Update profile with Google photo if missing
-      await setDoc(doc(db, "users", result.user.uid), { lastLogin: new Date().toISOString() }, { merge: true });
-      toast.success("¡Cuentas vinculadas! Ahora puedes usar Google o email/contraseña indistintamente.");
-      setPendingLinkEmail('');
-      setPendingLinkCredential(null);
-      setLinkPassword('');
-    } catch (err: any) {
-      const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
-        ? 'Contraseña incorrecta'
-        : 'Error al vincular cuentas';
-      toast.error(msg);
-    } finally {
-      setIsLinkingAccount(false);
+      const msg = getAuthError(error, 'google');
+      if (msg) toast.error(msg);
     }
   };
 
@@ -963,14 +1040,31 @@ const handleDownloadInvoice = () => {
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentStore || !isAdmin) return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) return toast.error("Ingresa un email válido.");
+    if (inviteAuthMethod === 'email' && (!invitePassword || invitePassword.length < 6)) {
+      return toast.error("La contraseña temporal debe tener al menos 6 caracteres.");
+    }
     try {
-      const memberId = inviteEmail.replace(/\./g, "_");
-      const memberData = { userId: "", storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], joinedAt: new Date().toISOString(), authMethod: inviteAuthMethod };
+      // Enforce 1 user = 1 store / 1 role.
+      const reason = await emailFreeReason(email);
+      if (reason) { toast.error(reason); return; }
+
+      const memberId = email.replace(/\./g, "_");
+      const memberData: any = {
+        userId: "",
+        storeId: currentStore.id,
+        role: inviteRole,
+        email,
+        displayName: email.split("@")[0],
+        joinedAt: new Date().toISOString(),
+        authMethod: inviteAuthMethod,
+      };
+      if (inviteAuthMethod === 'email' && invitePassword) {
+        memberData.tempPassword = invitePassword;
+      }
       await setDoc(doc(db, "stores", currentStore.id, "members", memberId), memberData);
-      const invitationData: any = { storeId: currentStore.id, role: inviteRole, email: inviteEmail, displayName: inviteEmail.split("@")[0], authMethod: inviteAuthMethod };
-      if (inviteAuthMethod === 'email' && invitePassword) invitationData.tempPassword = invitePassword;
-      await setDoc(doc(db, "userInvitations", memberId), invitationData);
-      toast.success(`Miembro ${inviteEmail} agregado al equipo`);
+      toast.success(`Miembro ${email} agregado al equipo`);
       setIsInviteDialogOpen(false);
       setInviteEmail("");
       setInviteAuthMethod('email');
@@ -1081,83 +1175,18 @@ const handleDownloadInvoice = () => {
     if (authView === "onboarding") {
       return <OnboardingWizard currentUser={user} onComplete={handleOnboardingComplete} onGoogleSignIn={handleGoogleLogin} onBack={() => setAuthViewTracked("login")} />;
     }
-    if (!user && (authView === "login" || authView === "signup")) {
+    if (!user && authView === "login") {
       return (
-        <>
-          <LoginPage
-            authView={authView}
-            setAuthView={setAuthViewTracked}
-            authEmail={authEmail}
-            setAuthEmail={setAuthEmail}
-            authPassword={authPassword}
-            setAuthPassword={setAuthPassword}
-            authDisplayName={authDisplayName}
-            setAuthDisplayName={setAuthDisplayName}
-            isAuthLoading={isAuthLoading}
-            handleEmailAuth={handleEmailAuth}
-            handleGoogleLogin={handleGoogleLogin}
-          />
-
-          {/* ── Account linking overlay ── */}
-          <AnimatePresence>
-            {pendingLinkEmail && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
-              >
-                <motion.div
-                  initial={{ scale: 0.95, opacity: 0, y: 12 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  exit={{ scale: 0.95, opacity: 0, y: 12 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <Card className="w-full max-w-sm shadow-2xl border-none rounded-3xl overflow-hidden">
-                    <CardHeader className="text-center pb-2 pt-8">
-                      <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                        <img src="https://www.google.com/favicon.ico" className="w-7 h-7" alt="Google" />
-                      </div>
-                      <CardTitle className="text-xl">Vincular cuenta de Google</CardTitle>
-                      <CardDescription className="text-sm leading-relaxed">
-                        Ya existe una cuenta con{' '}
-                        <span className="font-semibold text-slate-700">{pendingLinkEmail}</span>.{' '}
-                        Ingresa tu contraseña para vincular Google a esta cuenta.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4 px-6 pb-8">
-                      <Input
-                        type="password"
-                        placeholder="Tu contraseña actual"
-                        value={linkPassword}
-                        onChange={e => setLinkPassword(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleLinkAccounts()}
-                        className="h-12 rounded-xl"
-                        autoFocus
-                      />
-                      <Button
-                        onClick={handleLinkAccounts}
-                        disabled={!linkPassword || isLinkingAccount}
-                        className="w-full h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold disabled:opacity-40"
-                      >
-                        {isLinkingAccount
-                          ? <RefreshCw size={16} className="animate-spin" />
-                          : 'Vincular y entrar'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => { setPendingLinkEmail(''); setPendingLinkCredential(null); setLinkPassword(''); }}
-                        className="w-full text-slate-400 hover:text-slate-700"
-                      >
-                        Cancelar
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </>
+        <LoginPage
+          setAuthView={setAuthViewTracked}
+          authEmail={authEmail}
+          setAuthEmail={setAuthEmail}
+          authPassword={authPassword}
+          setAuthPassword={setAuthPassword}
+          isAuthLoading={isAuthLoading}
+          handleEmailLogin={handleEmailLogin}
+          handleGoogleLogin={handleGoogleLogin}
+        />
       );
     }
     return (

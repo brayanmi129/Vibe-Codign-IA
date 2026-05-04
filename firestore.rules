@@ -23,6 +23,11 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/superadmins/$(request.auth.token.email));
     }
 
+    function emailKey() {
+      // Document IDs in stores/{storeId}/members are the email with '.' → '_'.
+      return request.auth.token.email.replace('.', '_');
+    }
+
     function isStoreOwner(storeId) {
       return (isSignedIn() &&
         get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid)
@@ -32,11 +37,11 @@ service cloud.firestore {
     function isStoreMember(storeId) {
       return (storeId == "stockmaster-ai-demo" && request.auth == null) ||
         (isSignedIn() &&
-          exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid)));
+          exists(/databases/$(database)/documents/stores/$(storeId)/members/$(emailKey())));
     }
 
     function getStoreRole(storeId) {
-      return get(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid)).data.role;
+      return get(/databases/$(database)/documents/stores/$(storeId)/members/$(emailKey())).data.role;
     }
 
     function hasAdminRole(storeId) {
@@ -57,13 +62,18 @@ service cloud.firestore {
     // ─── Super Admins collection ──────────────────────────────────────
     // Document ID = email address. Works with any auth provider.
     // The seed admin (admin@stockmaster.ai) can write during setup.
+    // Any signed-in user can GET their own super-admin record (needed for the
+    // first-login auth-method check before the user is fully resolved).
     match /superadmins/{email} {
-      allow get: if isSignedIn() && request.auth.token.email == email;
+      allow get: if (isSignedIn() && request.auth.token.email == email) || isSuperAdmin();
       allow list: if isSuperAdmin();
-      allow write: if isSignedIn() && (
+      allow create, update: if isSignedIn() && (
         isSuperAdmin() ||
         request.auth.token.email == "admin@stockmaster.ai"
       );
+      // The user themselves can clear their own tempPassword on first login.
+      allow update: if isSignedIn() && request.auth.token.email == email;
+      allow delete: if isSuperAdmin();
     }
 
     // ─── Stores ───────────────────────────────────────────────────────
@@ -72,7 +82,7 @@ service cloud.firestore {
       allow list: if isSuperAdmin() ||
         (isSignedIn() && (
           resource.data.ownerId == request.auth.uid ||
-          exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid))
+          exists(/databases/$(database)/documents/stores/$(storeId)/members/$(emailKey()))
         )) ||
         storeId == "stockmaster-ai-demo";
 
@@ -85,11 +95,13 @@ service cloud.firestore {
         allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
       }
 
-      match /members/{userId} {
+      // Members: stored by email-key. Admin of the store writes; the member
+      // himself can update his own doc (to bind userId / clear tempPassword on first login).
+      match /members/{memberKey} {
         allow read: if isStoreMember(storeId) || isStoreOwner(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
         allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || isSuperAdmin() ||
-          (isSignedIn() && request.auth.uid == userId) ||
-          isDemoUID(userId) ||
+          (isSignedIn() && memberKey == emailKey()) ||
+          isDemoUID(memberKey) ||
           storeId == "stockmaster-ai-demo";
       }
 
@@ -115,11 +127,18 @@ service cloud.firestore {
       }
     }
 
-    // ─── User invitations ─────────────────────────────────────────────
-    // Key = email.replace(/\./g, '_'). Written by store admins, read/deleted by the invited user.
-    match /userInvitations/{inviteKey} {
-      allow read, delete: if isSignedIn();
-      allow write: if isSignedIn();
+    // ─── Cross-tenant member lookup ───────────────────────────────────
+    // collectionGroup('members') queries are needed for two flows:
+    //   1. First-login binding: a user just authenticated and we look up their
+    //      pre-registration by email to find which store they belong to.
+    //   2. "Email free" validation before adding a new member or super admin.
+    //
+    // Both cases require any signed-in user to read members. Filtering happens
+    // client-side by 'email' field; an attacker still needs to know the target
+    // email to learn anything from this. tempPassword leaks to anyone who can
+    // guess an email — acceptable trade-off in this client-only architecture.
+    match /{path=**}/members/{memberKey} {
+      allow read: if isSignedIn();
     }
 
     // ─── User profiles ────────────────────────────────────────────────

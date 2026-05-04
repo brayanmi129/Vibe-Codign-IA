@@ -345,13 +345,18 @@ async function seedStore(adminUid: string) {
     role: "admin",
   });
 
-  // members: el documento cuyo ID es el UID del usuario.
-  // handleSelectStore lee members/{user.uid}.role para setMemberRole.
-  await setDoc(doc(db, "stores", TENANT_ID, "members", adminUid), {
+  // members: el documento cuyo ID es la EMAIL-KEY (email con '.' → '_').
+  // Esto coincide con cómo se escriben los miembros desde la app y con el
+  // chequeo en firestore.rules (isStoreMember usa emailKey()).
+  const adminMemberKey = ADMIN_EMAIL.replace(/\./g, "_");
+  await setDoc(doc(db, "stores", TENANT_ID, "members", adminMemberKey), {
     userId:      adminUid,
+    storeId:     TENANT_ID,
     role:        "admin",
     email:       ADMIN_EMAIL,
     displayName: "Admin StockMaster",
+    authMethod:  "email",
+    joinedAt:    daysAgo(90),
     // Admin sin branchId = acceso a todas las sucursales
   });
   console.log("✅ Admin vinculado a la tienda (usuario + miembro).");
