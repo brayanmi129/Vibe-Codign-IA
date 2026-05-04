@@ -119,6 +119,10 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
     authViewRef.current = v;
     setAuthView(v);
   };
+  // While true, onAuthStateChanged skips its membership-resolution logic so
+  // the email-activation flow in handleEmailLogin can do the verification
+  // itself (it has access to the typed password; onAuthStateChanged doesn't).
+  const isActivatingMember = React.useRef(false);
 
   const [salesDateFilter, setSalesDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
   const [salesRangeType, setSalesRangeType] = useState<'day' | 'week' | 'month'>('day');
@@ -346,21 +350,41 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         return;
       }
 
+      // Email-activation in progress (handleEmailLogin just created an Auth
+      // account and is verifying the temp password). It will run the binding
+      // itself once verification passes, or delete the account if it fails.
+      if (isActivatingMember.current) {
+        setIsStoreLoading(false);
+        return;
+      }
+
       const userEmail = currentUser.email || '';
       const usedGoogle = (currentUser.providerData || []).some((p: any) => p.providerId === 'google.com');
+
+      // Reject the user when they're authenticated but not authorized. Try to
+      // delete the Firebase Auth account so the email is free to be activated
+      // properly later (right method, or after the admin pre-registers them).
+      // delete() requires recent authentication; if it fails (token too old),
+      // fall back to signOut so the user isn't stuck signed in.
+      const rejectAuth = async (reason: string) => {
+        toast.error(reason);
+        try {
+          if (auth.currentUser) await auth.currentUser.delete();
+        } catch {
+          await signOut(auth);
+        }
+      };
 
       // 1) Super admin check (highest priority — bypasses tenant resolution)
       const saRecord = await getSuperAdminRecord(userEmail);
       if (saRecord) {
         // Enforce the auth-method the super admin was registered with.
         if (saRecord.authMethod === 'google' && !usedGoogle) {
-          toast.error("Tu cuenta de Super Admin está configurada para Google. Cierra sesión y entra con Google.");
-          await signOut(auth);
+          await rejectAuth("Tu cuenta de Super Admin está configurada para Google. Cierra sesión y entra con Google.");
           return;
         }
         if (saRecord.authMethod === 'email' && usedGoogle) {
-          toast.error("Tu cuenta de Super Admin está configurada para email/contraseña.");
-          await signOut(auth);
+          await rejectAuth("Tu cuenta de Super Admin está configurada para email/contraseña.");
           return;
         }
         if (saRecord.tempPassword) {
@@ -373,28 +397,26 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
 
       // 2) Tenant member resolution — find this user's pre-registered membership.
       if (!userEmail) {
-        toast.error("Tu cuenta no expone un email. Inicia sesión con un proveedor que lo entregue.");
-        await signOut(auth);
+        await rejectAuth("Tu cuenta no expone un email. Inicia sesión con un proveedor que lo entregue.");
         return;
       }
       try {
         const result = await findMembershipByEmail(userEmail);
         if (!result) {
-          toast.error("Tu cuenta no está vinculada a ninguna tienda. Pide a tu admin que te agregue.");
-          await signOut(auth);
+          // Authentication succeeded but no authorization: the email isn't
+          // pre-registered anywhere. Wipe the Auth account so retries are clean.
+          await rejectAuth("Tu cuenta no está vinculada a ninguna tienda. Pide a tu admin que te agregue.");
           return;
         }
         const { member, storeId, memberKey } = result;
 
         // Enforce the method the admin chose for this employee/admin.
         if (member.authMethod === 'google' && !usedGoogle) {
-          toast.error("Tu admin configuró acceso por Google. Cierra sesión e ingresa con Google.");
-          await signOut(auth);
+          await rejectAuth("Tu admin configuró acceso por Google. Cierra sesión e ingresa con Google.");
           return;
         }
         if (member.authMethod === 'email' && usedGoogle) {
-          toast.error("Tu admin configuró acceso por email/contraseña.");
-          await signOut(auth);
+          await rejectAuth("Tu admin configuró acceso por email/contraseña.");
           return;
         }
 
@@ -711,10 +733,15 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
   };
 
   // Email/password login. Public registration is disabled — only admins (via
-  // onboarding) and pre-registered users (via /superadmins/* or stores/.../members/*)
-  // can sign in. If Firebase Auth doesn't have an account yet but a pre-registration
-  // exists with matching authMethod='email' and tempPassword, we create the
-  // account on-the-fly and clean the temp password afterwards.
+  // onboarding) and pre-registered users can sign in. If a pre-registered user
+  // doesn't have a Firebase Auth account yet, we create one with the password
+  // they typed, then verify it matches the tempPassword the admin set. If not,
+  // we roll back the account.
+  //
+  // Why create-then-verify (instead of verify-then-create)? Firestore rules
+  // require isSignedIn() to read /members and /superadmins, so we can't peek
+  // at the pre-registration before authenticating. The brief Auth account that
+  // gets deleted on mismatch is an acceptable trade-off.
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authEmail || !authPassword) return toast.error("Completa email y contraseña.");
@@ -739,43 +766,80 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         toast.success("Sesión iniciada. Bienvenido!");
         return;
       } catch (signInErr: any) {
-        // Only fall through for "user does not exist yet" — wrong-password etc. is fatal.
         if (signInErr.code !== 'auth/user-not-found') {
           const msg = getAuthError(signInErr, 'login');
           if (msg) toast.error(msg);
           return;
         }
+        // user-not-found → fall through to first-time activation.
       }
 
-      // Account doesn't exist — verify a pre-registration matches before creating.
-      const saRecord = await getSuperAdminRecord(authEmail);
-      const membershipResult = saRecord ? null : await findMembershipByEmail(authEmail);
-      const preReg: { authMethod: 'google' | 'email'; tempPassword?: string } | null =
-        saRecord ?? (membershipResult ? membershipResult.member : null);
-
-      if (!preReg) {
-        toast.error("No tienes acceso. Pídele a tu admin que te agregue al equipo.");
-        return;
-      }
-      if (preReg.authMethod !== 'email') {
-        toast.error("Tu cuenta está configurada para Google. Usa el botón de Google.");
-        return;
-      }
-      if (!preReg.tempPassword || preReg.tempPassword !== authPassword) {
-        toast.error("Contraseña temporal incorrecta. Verifícala con tu admin.");
-        return;
-      }
-
-      // Pre-registration matches → create the Firebase Auth account.
-      // onAuthStateChanged will then bind the membership and clear the temp password.
+      // First-time activation: create the Auth account, then verify pre-reg.
+      // Suppress onAuthStateChanged so it doesn't try to resolve membership
+      // before we've checked the temp password.
+      isActivatingMember.current = true;
+      let createdUser: User | null = null;
       try {
-        await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        const result = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        createdUser = result.user;
+
+        // Now authenticated → can read pre-registration.
+        const saRecord = await getSuperAdminRecord(authEmail);
+        const memResult = saRecord ? null : await findMembershipByEmail(authEmail);
+        const preReg: { authMethod: 'google' | 'email'; tempPassword?: string } | null =
+          saRecord ?? (memResult ? memResult.member : null);
+
+        if (!preReg) {
+          throw new Error("No tienes acceso. Pídele a tu admin que te agregue al equipo.");
+        }
+        if (preReg.authMethod !== 'email') {
+          throw new Error("Tu cuenta está configurada para Google. Usa el botón de Google.");
+        }
+        if (!preReg.tempPassword || preReg.tempPassword !== authPassword) {
+          throw new Error("Contraseña temporal incorrecta. Verifícala con tu admin.");
+        }
+
+        // Verification passed. Bind the user and load their store. We do this
+        // manually because onAuthStateChanged was suppressed.
+        if (saRecord) {
+          if (saRecord.tempPassword) {
+            await clearSuperAdminTempPassword(authEmail).catch(() => {});
+          }
+          isActivatingMember.current = false;
+          setIsSuperAdmin(true);
+          setIsStoreLoading(false);
+        } else if (memResult) {
+          await bindMemberToUser(memResult.storeId, memResult.memberKey, createdUser.uid);
+          await setDoc(
+            doc(db, "users", createdUser.uid, "userStores", memResult.storeId),
+            { role: memResult.member.role },
+            { merge: true }
+          );
+          const storeDoc = await getDoc(doc(db, "stores", memResult.storeId));
+          if (!storeDoc.exists()) {
+            throw new Error("La tienda asociada ya no existe.");
+          }
+          const storeData = { ...storeDoc.data(), id: storeDoc.id } as Store;
+          isActivatingMember.current = false;
+          setUserStores([storeData]);
+          await handleSelectStore(storeData);
+        }
         toast.success("Cuenta activada. ¡Bienvenido! Cambia tu contraseña en Ajustes.");
-      } catch (createErr: any) {
-        // Defensive: if creation fails for any reason we don't leak the auth state.
-        if (auth.currentUser) await auth.currentUser.delete().catch(() => {});
-        const msg = getAuthError(createErr, 'login');
-        toast.error(msg || "Error al activar tu cuenta. Intenta de nuevo.");
+      } catch (err: any) {
+        // Roll back: delete the Auth account so the email is free again.
+        if (createdUser) {
+          await createdUser.delete().catch(() => {});
+        }
+        const code = err?.code;
+        if (code === 'auth/email-already-in-use') {
+          toast.error("Esa cuenta existe pero la contraseña no coincide. Verifícala con tu admin.");
+        } else if (code === 'auth/weak-password') {
+          toast.error("La contraseña debe tener al menos 6 caracteres.");
+        } else {
+          toast.error(err.message || "Error al activar tu cuenta. Intenta de nuevo.");
+        }
+      } finally {
+        isActivatingMember.current = false;
       }
     } finally {
       setIsAuthLoading(false);

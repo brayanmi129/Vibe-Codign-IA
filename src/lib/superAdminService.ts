@@ -41,9 +41,20 @@ export async function getSuperAdminRecord(email: string): Promise<SuperAdminReco
   }
 }
 
+// Every known subcollection under stores/{storeId}. If you add a new one in
+// the app, add it here too — otherwise deleteStoreTenant leaves zombies.
+const STORE_SUBCOLLECTIONS = [
+  'products',
+  'sales',
+  'restocks',
+  'branches',
+  'members',
+  'expenses',
+] as const;
+
 async function deleteSubcollection(storeId: string, sub: string): Promise<void> {
   const snap = await getDocs(collection(db, 'stores', storeId, sub));
-  await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+  await Promise.all(snap.docs.map(d => deleteDoc(d.ref).catch(() => {})));
 }
 
 export async function getAllStores(): Promise<AdminStoreView[]> {
@@ -80,17 +91,25 @@ export async function getAllStores(): Promise<AdminStoreView[]> {
   );
 }
 
+// Wipes a store and every trace of it: all subcollections, the store doc, and
+// the per-user mirror at users/{uid}/userStores/{storeId} for any member that
+// had been bound to a Firebase UID. Safe to call even if some pieces don't
+// exist yet (each individual delete is fault-tolerant).
+//
+// Does NOT touch Firebase Auth accounts (client SDK can't delete arbitrary
+// users) nor external storage (logos / invoice PDFs in Supabase).
 export async function deleteStoreTenant(storeId: string, members: StoreMember[]): Promise<void> {
-  await Promise.all([
-    deleteSubcollection(storeId, 'products'),
-    deleteSubcollection(storeId, 'sales'),
-    deleteSubcollection(storeId, 'restocks'),
-    deleteSubcollection(storeId, 'branches'),
-    deleteSubcollection(storeId, 'members'),
-  ]);
+  // 1. Drain every known subcollection in parallel.
+  await Promise.all(
+    STORE_SUBCOLLECTIONS.map(sub => deleteSubcollection(storeId, sub))
+  );
 
-  await deleteDoc(doc(db, 'stores', storeId));
+  // 2. Delete the store root document.
+  await deleteDoc(doc(db, 'stores', storeId)).catch(() => {});
 
+  // 3. Clean per-user mirrors so the store doesn't show up as "yours" anymore.
+  // Includes members without a bound userId in case they were partially linked
+  // by some legacy flow we don't know about.
   await Promise.all(
     members
       .filter(m => m.userId)
@@ -208,54 +227,4 @@ export async function bindMemberToUser(
 // Same idea for super admins that were added with method='email' + tempPassword.
 export async function clearSuperAdminTempPassword(email: string): Promise<void> {
   await updateDoc(doc(db, 'superadmins', email), { tempPassword: null });
-}
-
-// Nuke every Firestore trace of an email: super-admin record, every member doc
-// across all stores, and the user profile (if userId is recoverable). Does NOT
-// touch Firebase Auth — that account must be deleted from the Firebase console
-// by hand because the client SDK can't delete arbitrary users.
-//
-// Use case: a previous failed onboarding left orphan member docs and the user
-// can't re-register. Super admins call this to wipe the slate clean.
-export async function purgeEmailFromFirestore(email: string): Promise<{
-  superAdminRemoved: boolean;
-  membersRemoved: number;
-  userStoresRemoved: number;
-}> {
-  let superAdminRemoved = false;
-  let membersRemoved = 0;
-  let userStoresRemoved = 0;
-
-  // 1. Super admin record
-  try {
-    const saSnap = await getDoc(doc(db, 'superadmins', email));
-    if (saSnap.exists()) {
-      await deleteDoc(doc(db, 'superadmins', email));
-      superAdminRemoved = true;
-    }
-  } catch { /* ignore */ }
-
-  // 2. Every member doc across all stores
-  const memberQuery = query(collectionGroup(db, 'members'), where('email', '==', email));
-  const memberSnap = await getDocs(memberQuery);
-  for (const m of memberSnap.docs) {
-    const userId = (m.data() as Partial<StoreMember>).userId;
-    try {
-      await deleteDoc(m.ref);
-      membersRemoved++;
-    } catch { /* ignore */ }
-
-    // Also clean the per-user mirror at users/{uid}/userStores/{storeId}
-    if (userId) {
-      const storeIdFromPath = m.ref.parent.parent?.id;
-      if (storeIdFromPath) {
-        try {
-          await deleteDoc(doc(db, 'users', userId, 'userStores', storeIdFromPath));
-          userStoresRemoved++;
-        } catch { /* ignore */ }
-      }
-    }
-  }
-
-  return { superAdminRemoved, membersRemoved, userStoresRemoved };
 }

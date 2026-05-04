@@ -36,7 +36,6 @@ import {
   removeSuperAdmin,
   removeMemberFromStore,
   emailFreeReason,
-  purgeEmailFromFirestore,
 } from "../lib/superAdminService";
 
 interface SuperAdminPageProps {
@@ -70,8 +69,6 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
   const [isAddingSa, setIsAddingSa] = React.useState(false);
   const [removingSaEmail, setRemovingSaEmail] = React.useState<string | null>(null);
 
-  const [purgeEmail, setPurgeEmail] = React.useState("");
-  const [isPurging, setIsPurging] = React.useState(false);
 
   const load = async () => {
     setIsLoading(true);
@@ -159,33 +156,6 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
       toast.error("Error al añadir Super Admin");
     } finally {
       setIsAddingSa(false);
-    }
-  };
-
-  const handlePurgeEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const email = purgeEmail.trim().toLowerCase();
-    if (!email) return;
-    if (email === user?.email) {
-      toast.error("No puedes purgarte a ti mismo.");
-      return;
-    }
-    if (!confirm(`¿Borrar TODA huella de "${email}" en Firestore?\n\n• Documento superadmins/${email}\n• Todos los members con ese email\n• Mirrors users/{uid}/userStores\n\nNO borra la cuenta de Firebase Auth (eso se hace en la consola Firebase).`)) {
-      return;
-    }
-    setIsPurging(true);
-    try {
-      const result = await purgeEmailFromFirestore(email);
-      const msg = `Purgado: ${result.membersRemoved} miembro(s), ${result.userStoresRemoved} userStore(s)${result.superAdminRemoved ? ', super admin' : ''}.`;
-      toast.success(msg);
-      setPurgeEmail("");
-      // Reload stores to reflect the deleted members
-      await load();
-    } catch (err) {
-      console.error(err);
-      toast.error("Error al purgar el email.");
-    } finally {
-      setIsPurging(false);
     }
   };
 
@@ -705,36 +675,6 @@ export function SuperAdminPage({ user, onLogout }: SuperAdminPageProps) {
                       {isAddingSa ? <RefreshCw size={20} className="animate-spin" /> : <UserPlus size={20} />}
                       Autorizar
                     </Button>
-                  </form>
-
-                  <form onSubmit={handlePurgeEmail} className="space-y-4 bg-rose-50/50 p-8 rounded-[32px] border-2 border-dashed border-rose-200">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle size={16} className="text-rose-600" />
-                      <p className="text-[11px] font-black text-rose-600 uppercase tracking-[0.2em]">Purgar email huérfano</p>
-                    </div>
-                    <p className="text-xs text-rose-700/80 leading-relaxed font-medium">
-                      Borra todo rastro de un email en Firestore: super-admin doc, todos los members en cualquier tienda, y los mirrors en users/. Útil cuando un onboarding falló a medias y dejó datos zombie. <span className="font-bold">No borra la cuenta de Firebase Auth</span> — para eso ve a Firebase Console → Authentication.
-                    </p>
-                    <div className="flex flex-col md:flex-row gap-4">
-                      <div className="relative flex-1">
-                        <Mail size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-rose-400" />
-                        <Input
-                          type="email"
-                          placeholder="email@a-purgar.com"
-                          value={purgeEmail}
-                          onChange={e => setPurgeEmail(e.target.value)}
-                          className="pl-14 h-14 bg-white border-2 border-rose-100 rounded-2xl text-base font-black text-rose-900 placeholder:text-rose-300 focus:ring-4 focus:ring-rose-100 transition-all"
-                        />
-                      </div>
-                      <Button
-                        type="submit"
-                        disabled={isPurging || !purgeEmail.trim()}
-                        className="h-14 px-8 bg-rose-600 hover:bg-rose-700 text-white rounded-[18px] font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-rose-100 active:scale-[0.98] transition-all gap-4 disabled:opacity-30"
-                      >
-                        {isPurging ? <RefreshCw size={20} className="animate-spin" /> : <Trash2 size={20} />}
-                        Purgar
-                      </Button>
-                    </div>
                   </form>
 
                   <div className="space-y-6">
