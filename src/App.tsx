@@ -358,19 +358,17 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         return;
       }
 
-      const userEmail = currentUser.email || '';
+      const userEmail = (currentUser.email || '').trim().toLowerCase();
       const usedGoogle = (currentUser.providerData || []).some((p: any) => p.providerId === 'google.com');
+      console.log('[auth] resolving user', { uid: currentUser.uid, email: userEmail, usedGoogle, providers: (currentUser.providerData || []).map((p: any) => p.providerId) });
 
-      // Reject the user when they're authenticated but not authorized. Try to
-      // delete the Firebase Auth account so the email is free to be activated
-      // properly later (right method, or after the admin pre-registers them).
-      // delete() requires recent authentication; if it fails (token too old),
-      // fall back to signOut so the user isn't stuck signed in.
       const rejectAuth = async (reason: string) => {
+        console.warn('[auth] rejecting user:', reason);
         toast.error(reason);
         try {
           if (auth.currentUser) await auth.currentUser.delete();
-        } catch {
+        } catch (delErr) {
+          console.warn('[auth] delete failed, falling back to signOut:', delErr);
           await signOut(auth);
         }
       };
@@ -378,7 +376,7 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       // 1) Super admin check (highest priority — bypasses tenant resolution)
       const saRecord = await getSuperAdminRecord(userEmail);
       if (saRecord) {
-        // Enforce the auth-method the super admin was registered with.
+        console.log('[auth] super admin record found', { authMethod: saRecord.authMethod });
         if (saRecord.authMethod === 'google' && !usedGoogle) {
           await rejectAuth("Tu cuenta de Super Admin está configurada para Google. Cierra sesión y entra con Google.");
           return;
@@ -401,16 +399,15 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         return;
       }
       try {
+        console.log('[auth] looking up member by email');
         const result = await findMembershipByEmail(userEmail);
         if (!result) {
-          // Authentication succeeded but no authorization: the email isn't
-          // pre-registered anywhere. Wipe the Auth account so retries are clean.
           await rejectAuth("Tu cuenta no está vinculada a ninguna tienda. Pide a tu admin que te agregue.");
           return;
         }
         const { member, storeId, memberKey } = result;
+        console.log('[auth] member found', { storeId, memberKey, role: member.role, authMethod: member.authMethod, hasUserId: !!member.userId });
 
-        // Enforce the method the admin chose for this employee/admin.
         if (member.authMethod === 'google' && !usedGoogle) {
           await rejectAuth("Tu admin configuró acceso por Google. Cierra sesión e ingresa con Google.");
           return;
@@ -420,19 +417,27 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
           return;
         }
 
-        // First-time bind: write the Firebase UID and clear the temp password.
-        // Use the actual member doc key (could be a legacy UID-key seed doc).
         if (!member.userId || member.tempPassword) {
-          await bindMemberToUser(storeId, memberKey, currentUser.uid).catch(() => {});
+          console.log('[auth] binding member to UID');
+          try {
+            await bindMemberToUser(storeId, memberKey, currentUser.uid);
+          } catch (bindErr) {
+            console.error('[auth] bindMemberToUser failed (non-fatal):', bindErr);
+          }
         }
 
-        // Mirror the membership in users/{uid}/userStores for fast subsequent reads.
-        await setDoc(
-          doc(db, "users", currentUser.uid, "userStores", storeId),
-          { role: member.role },
-          { merge: true }
-        );
+        console.log('[auth] mirroring userStores');
+        try {
+          await setDoc(
+            doc(db, "users", currentUser.uid, "userStores", storeId),
+            { role: member.role },
+            { merge: true }
+          );
+        } catch (mirrorErr) {
+          console.warn('[auth] userStores mirror failed (non-fatal):', mirrorErr);
+        }
 
+        console.log('[auth] loading store doc');
         const storeDoc = await getDoc(doc(db, "stores", storeId));
         if (!storeDoc.exists()) {
           toast.error("La tienda asociada ya no existe.");
@@ -441,10 +446,11 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         }
         const storeData = { ...storeDoc.data(), id: storeDoc.id } as Store;
         setUserStores([storeData]);
+        console.log('[auth] selecting store and rendering main app');
         await handleSelectStore(storeData);
       } catch (err) {
-        console.error('Error resolving user membership', err);
-        toast.error("Error al resolver tu cuenta. Intenta de nuevo.");
+        console.error('[auth] Error resolving user membership', err);
+        toast.error("Error al resolver tu cuenta. Mira la consola del navegador para detalles.");
         await signOut(auth);
       }
     });
@@ -1279,12 +1285,15 @@ const handleDownloadInvoice = () => {
   // ─── Render: Loading ──────────────────────────────────────────────
   if (!isAuthReady) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <RefreshCw className="animate-spin text-indigo-600 w-10 h-10" />
-          <p className="text-slate-500 font-medium">Cargando StockMaster AI...</p>
+      <>
+        <Toaster position="top-right" />
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <RefreshCw className="animate-spin text-indigo-600 w-10 h-10" />
+            <p className="text-slate-500 font-medium">Cargando StockMaster AI...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -1322,12 +1331,15 @@ const handleDownloadInvoice = () => {
       );
     }
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <RefreshCw className="animate-spin text-indigo-600 w-10 h-10" />
-          <p className="text-slate-500 font-medium">Cargando tu tienda...</p>
+      <>
+        <Toaster position="top-right" />
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <RefreshCw className="animate-spin text-indigo-600 w-10 h-10" />
+            <p className="text-slate-500 font-medium">Cargando tu tienda...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 

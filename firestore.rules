@@ -25,7 +25,10 @@ service cloud.firestore {
 
     function emailKey() {
       // Document IDs in stores/{storeId}/members are the email with '.' → '_'.
-      return request.auth.token.email.replace('.', '_');
+      // string.replace() in Firestore rules treats the first arg as a RE2 regex.
+      // A bare '.' would match every character (regex wildcard); '[.]' is a
+      // character class matching only the literal dot. Replacement is global.
+      return request.auth.token.email.replace('[.]', '_');
     }
 
     function isStoreOwner(storeId) {
