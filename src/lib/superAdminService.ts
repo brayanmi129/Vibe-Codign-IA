@@ -183,9 +183,10 @@ export async function emailFreeReason(email: string): Promise<string | null> {
 
   const result = await findMembershipByEmail(email);
   if (result) {
+    const storeHint = result.storeId ? ` (tienda: ${result.storeId})` : '';
     return result.member.role === 'admin'
-      ? 'Ese email ya es admin de otra tienda.'
-      : 'Ese email ya pertenece al equipo de otra tienda.';
+      ? `Ese email ya es admin de otra tienda${storeHint}.`
+      : `Ese email ya pertenece al equipo de otra tienda${storeHint}.`;
   }
   return null;
 }
@@ -207,4 +208,54 @@ export async function bindMemberToUser(
 // Same idea for super admins that were added with method='email' + tempPassword.
 export async function clearSuperAdminTempPassword(email: string): Promise<void> {
   await updateDoc(doc(db, 'superadmins', email), { tempPassword: null });
+}
+
+// Nuke every Firestore trace of an email: super-admin record, every member doc
+// across all stores, and the user profile (if userId is recoverable). Does NOT
+// touch Firebase Auth — that account must be deleted from the Firebase console
+// by hand because the client SDK can't delete arbitrary users.
+//
+// Use case: a previous failed onboarding left orphan member docs and the user
+// can't re-register. Super admins call this to wipe the slate clean.
+export async function purgeEmailFromFirestore(email: string): Promise<{
+  superAdminRemoved: boolean;
+  membersRemoved: number;
+  userStoresRemoved: number;
+}> {
+  let superAdminRemoved = false;
+  let membersRemoved = 0;
+  let userStoresRemoved = 0;
+
+  // 1. Super admin record
+  try {
+    const saSnap = await getDoc(doc(db, 'superadmins', email));
+    if (saSnap.exists()) {
+      await deleteDoc(doc(db, 'superadmins', email));
+      superAdminRemoved = true;
+    }
+  } catch { /* ignore */ }
+
+  // 2. Every member doc across all stores
+  const memberQuery = query(collectionGroup(db, 'members'), where('email', '==', email));
+  const memberSnap = await getDocs(memberQuery);
+  for (const m of memberSnap.docs) {
+    const userId = (m.data() as Partial<StoreMember>).userId;
+    try {
+      await deleteDoc(m.ref);
+      membersRemoved++;
+    } catch { /* ignore */ }
+
+    // Also clean the per-user mirror at users/{uid}/userStores/{storeId}
+    if (userId) {
+      const storeIdFromPath = m.ref.parent.parent?.id;
+      if (storeIdFromPath) {
+        try {
+          await deleteDoc(doc(db, 'users', userId, 'userStores', storeIdFromPath));
+          userStoresRemoved++;
+        } catch { /* ignore */ }
+      }
+    }
+  }
+
+  return { superAdminRemoved, membersRemoved, userStoresRemoved };
 }

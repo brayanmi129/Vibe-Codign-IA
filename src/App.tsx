@@ -524,6 +524,8 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
 
   const handleOnboardingComplete = async (onboardingData: OnboardingData) => {
     setIsStoreLoading(true);
+    // Track resources we create so we can roll them back if a later step fails.
+    let createdAuthAccount = false;
     try {
       const adminEmail = onboardingData.adminInfo?.email || user?.email;
       if (!adminEmail) throw new Error("Falta el email del administrador.");
@@ -539,11 +541,31 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         } else {
           try {
             const result = await createUserWithEmailAndPassword(auth, onboardingData.adminInfo.email, onboardingData.adminInfo.password);
+            createdAuthAccount = true;
             await updateProfile(result.user, { displayName: onboardingData.adminInfo.displayName });
             activeUser = result.user;
             setUser(activeUser);
           } catch (error: any) {
-            if (error.code === 'auth/operation-not-allowed') {
+            // Recovery path: if the email already has an Auth account (orphaned
+            // from a previous failed onboarding), try to sign in with the same
+            // credentials. The user is essentially reclaiming their account.
+            if (error.code === 'auth/email-already-in-use') {
+              try {
+                const result = await signInWithEmailAndPassword(auth, onboardingData.adminInfo.email, onboardingData.adminInfo.password);
+                if (onboardingData.adminInfo.displayName && !result.user.displayName) {
+                  await updateProfile(result.user, { displayName: onboardingData.adminInfo.displayName });
+                }
+                activeUser = result.user;
+                setUser(activeUser);
+                // We did NOT create this account — don't roll it back on failure.
+                createdAuthAccount = false;
+              } catch (signInErr: any) {
+                throw new Error(
+                  "Ya existe una cuenta con ese email pero la contraseña no coincide. " +
+                  "Usa la contraseña original o reinicia tu cuenta desde la consola de Firebase."
+                );
+              }
+            } else if (error.code === 'auth/operation-not-allowed') {
               activeUser = { uid: `local_${onboardingData.adminInfo.email.replace(/@/g, '_')}`, email: onboardingData.adminInfo.email, displayName: onboardingData.adminInfo.displayName } as any;
               setUser(activeUser);
             } else {
@@ -556,17 +578,12 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       }
       if (!activeUser) throw new Error("Error de autenticación");
 
-      // Cross-tenant validation runs HERE — user is now authenticated so the
+      // Cross-tenant validation: user is now authenticated so the
       // collectionGroup query against /members has the rights it needs. Skip
-      // for the demo seed account.
+      // for the demo seed account. Errors here trigger rollback in the catch.
       if (adminEmail !== "admin@stockmaster.ai") {
         const reason = await emailFreeReason(adminEmail);
         if (reason) {
-          // Roll back the auth account we just created so the user isn't
-          // stuck signed in to a half-created identity.
-          if (auth.currentUser && auth.currentUser.email === adminEmail && !auth.currentUser.providerData.some(p => p.providerId === 'google.com')) {
-            await auth.currentUser.delete().catch(() => {});
-          }
           throw new Error(`${reason} No puedes crear una tienda con esa cuenta.`);
         }
       }
@@ -641,6 +658,17 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       handleSelectStore(newStore);
       toast.success("¡Tienda creada con éxito! 🚀");
     } catch (error: any) {
+      console.error('Onboarding failed:', error);
+      // Roll back the Firebase Auth account if WE created it during this run.
+      // Otherwise we'd leave a ghost account that blocks future onboarding attempts.
+      if (createdAuthAccount && auth.currentUser) {
+        try {
+          await auth.currentUser.delete();
+          console.log('Rolled back orphaned auth account');
+        } catch (delErr) {
+          console.warn('Failed to roll back auth account:', delErr);
+        }
+      }
       toast.error(error.message || "Error al completar el onboarding");
     } finally {
       setIsStoreLoading(false);
