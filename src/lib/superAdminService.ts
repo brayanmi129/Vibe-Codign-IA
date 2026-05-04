@@ -134,13 +134,45 @@ export async function removeSuperAdmin(email: string): Promise<void> {
 
 // ── Cross-tenant lookups (for "1 user = 1 store / 1 role" enforcement) ─────
 
+// What findMembershipByEmail returns. memberKey is the actual Firestore doc ID
+// (may be a UID for legacy seed data or an email-key for new writes). The caller
+// must use this exact ID when updating the member doc.
+export interface MembershipResult {
+  member: StoreMember;
+  storeId: string;
+  memberKey: string;
+}
+
 // Find ANY existing membership for this email across all stores. Used both to
 // link a user on first login and to refuse duplicate registrations.
-export async function findMembershipByEmail(email: string): Promise<StoreMember | null> {
+// Tolerant to legacy docs (missing storeId / authMethod fields).
+export async function findMembershipByEmail(email: string): Promise<MembershipResult | null> {
+  if (!email) return null;
   const q = query(collectionGroup(db, 'members'), where('email', '==', email));
   const snap = await getDocs(q);
   if (snap.empty) return null;
-  return snap.docs[0].data() as StoreMember;
+
+  const docSnap = snap.docs[0];
+  const data = docSnap.data() as Partial<StoreMember>;
+  // storeId may be missing on legacy docs — derive from path: stores/{storeId}/members/{key}
+  const storeId = data.storeId || docSnap.ref.parent.parent?.id || '';
+  if (!storeId) return null;
+
+  return {
+    storeId,
+    memberKey: docSnap.id,
+    member: {
+      userId: data.userId ?? '',
+      storeId,
+      role: (data.role as 'admin' | 'employee') ?? 'employee',
+      email: data.email ?? email,
+      displayName: data.displayName,
+      joinedAt: data.joinedAt,
+      branchId: data.branchId,
+      authMethod: (data.authMethod as 'google' | 'email') ?? 'email',
+      tempPassword: data.tempPassword,
+    },
+  };
 }
 
 // Refuses if the email is already a super admin or owns/belongs to any store.
@@ -149,9 +181,9 @@ export async function emailFreeReason(email: string): Promise<string | null> {
   const sa = await checkIsSuperAdmin(email);
   if (sa) return 'Ese email ya es Super Admin.';
 
-  const membership = await findMembershipByEmail(email);
-  if (membership) {
-    return membership.role === 'admin'
+  const result = await findMembershipByEmail(email);
+  if (result) {
+    return result.member.role === 'admin'
       ? 'Ese email ya es admin de otra tienda.'
       : 'Ese email ya pertenece al equipo de otra tienda.';
   }

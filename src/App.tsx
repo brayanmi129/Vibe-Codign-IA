@@ -372,40 +372,46 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       }
 
       // 2) Tenant member resolution — find this user's pre-registered membership.
+      if (!userEmail) {
+        toast.error("Tu cuenta no expone un email. Inicia sesión con un proveedor que lo entregue.");
+        await signOut(auth);
+        return;
+      }
       try {
-        const membership = await findMembershipByEmail(userEmail);
-        if (!membership) {
+        const result = await findMembershipByEmail(userEmail);
+        if (!result) {
           toast.error("Tu cuenta no está vinculada a ninguna tienda. Pide a tu admin que te agregue.");
           await signOut(auth);
           return;
         }
+        const { member, storeId, memberKey } = result;
 
         // Enforce the method the admin chose for this employee/admin.
-        if (membership.authMethod === 'google' && !usedGoogle) {
+        if (member.authMethod === 'google' && !usedGoogle) {
           toast.error("Tu admin configuró acceso por Google. Cierra sesión e ingresa con Google.");
           await signOut(auth);
           return;
         }
-        if (membership.authMethod === 'email' && usedGoogle) {
+        if (member.authMethod === 'email' && usedGoogle) {
           toast.error("Tu admin configuró acceso por email/contraseña.");
           await signOut(auth);
           return;
         }
 
         // First-time bind: write the Firebase UID and clear the temp password.
-        if (!membership.userId) {
-          const emailKey = userEmail.replace(/\./g, "_");
-          await bindMemberToUser(membership.storeId, emailKey, currentUser.uid);
+        // Use the actual member doc key (could be a legacy UID-key seed doc).
+        if (!member.userId || member.tempPassword) {
+          await bindMemberToUser(storeId, memberKey, currentUser.uid).catch(() => {});
         }
 
         // Mirror the membership in users/{uid}/userStores for fast subsequent reads.
         await setDoc(
-          doc(db, "users", currentUser.uid, "userStores", membership.storeId),
-          { role: membership.role },
+          doc(db, "users", currentUser.uid, "userStores", storeId),
+          { role: member.role },
           { merge: true }
         );
 
-        const storeDoc = await getDoc(doc(db, "stores", membership.storeId));
+        const storeDoc = await getDoc(doc(db, "stores", storeId));
         if (!storeDoc.exists()) {
           toast.error("La tienda asociada ya no existe.");
           await signOut(auth);
@@ -707,8 +713,9 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
 
       // Account doesn't exist — verify a pre-registration matches before creating.
       const saRecord = await getSuperAdminRecord(authEmail);
-      const membership = saRecord ? null : await findMembershipByEmail(authEmail);
-      const preReg = saRecord || membership;
+      const membershipResult = saRecord ? null : await findMembershipByEmail(authEmail);
+      const preReg: { authMethod: 'google' | 'email'; tempPassword?: string } | null =
+        saRecord ?? (membershipResult ? membershipResult.member : null);
 
       if (!preReg) {
         toast.error("No tienes acceso. Pídele a tu admin que te agregue al equipo.");
