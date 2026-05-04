@@ -744,10 +744,13 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
   // gets deleted on mismatch is an acceptable trade-off.
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!authEmail || !authPassword) return toast.error("Completa email y contraseña.");
+    // Normalize: emails are case-insensitive in Firebase Auth and we always
+    // store them lowercased. Trim too, since copy-paste often adds whitespace.
+    const normalizedEmail = authEmail.trim().toLowerCase();
+    if (!normalizedEmail || !authPassword) return toast.error("Completa email y contraseña.");
 
     // Demo seed admin shortcut: bypass pre-registration check.
-    if (authEmail === "admin@stockmaster.ai" && authPassword === "Admin#123") {
+    if (normalizedEmail === "admin@stockmaster.ai" && authPassword === "Admin#123") {
       setIsAuthLoading(true);
       try {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
@@ -761,17 +764,28 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
     setIsAuthLoading(true);
     try {
       // Try regular sign-in first (account already exists in Firebase Auth).
+      // Firebase Auth modern returns 'auth/invalid-credential' for BOTH
+      // wrong-password AND user-not-found (prevents email enumeration). So we
+      // can't tell from this error alone which case we're in — fall through to
+      // activation; if the account actually exists, createUserWithEmailAndPassword
+      // will fail with 'auth/email-already-in-use' and we'll show the right
+      // message there.
       try {
-        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+        await signInWithEmailAndPassword(auth, normalizedEmail, authPassword);
         toast.success("Sesión iniciada. Bienvenido!");
         return;
       } catch (signInErr: any) {
-        if (signInErr.code !== 'auth/user-not-found') {
+        const code = signInErr.code;
+        const looksLikeMaybeNotRegistered =
+          code === 'auth/user-not-found' || code === 'auth/invalid-credential';
+        if (!looksLikeMaybeNotRegistered) {
+          console.error('[handleEmailLogin] sign-in failed:', signInErr);
           const msg = getAuthError(signInErr, 'login');
           if (msg) toast.error(msg);
           return;
         }
-        // user-not-found → fall through to first-time activation.
+        // Could be: account doesn't exist (first-time activation) OR account
+        // exists but wrong password. Activation flow handles both correctly.
       }
 
       // First-time activation: create the Auth account, then verify pre-reg.
@@ -780,12 +794,12 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       isActivatingMember.current = true;
       let createdUser: User | null = null;
       try {
-        const result = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        const result = await createUserWithEmailAndPassword(auth, normalizedEmail, authPassword);
         createdUser = result.user;
 
         // Now authenticated → can read pre-registration.
-        const saRecord = await getSuperAdminRecord(authEmail);
-        const memResult = saRecord ? null : await findMembershipByEmail(authEmail);
+        const saRecord = await getSuperAdminRecord(normalizedEmail);
+        const memResult = saRecord ? null : await findMembershipByEmail(normalizedEmail);
         const preReg: { authMethod: 'google' | 'email'; tempPassword?: string } | null =
           saRecord ?? (memResult ? memResult.member : null);
 
@@ -803,7 +817,7 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
         // manually because onAuthStateChanged was suppressed.
         if (saRecord) {
           if (saRecord.tempPassword) {
-            await clearSuperAdminTempPassword(authEmail).catch(() => {});
+            await clearSuperAdminTempPassword(normalizedEmail).catch(() => {});
           }
           isActivatingMember.current = false;
           setIsSuperAdmin(true);
@@ -831,10 +845,13 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
           await createdUser.delete().catch(() => {});
         }
         const code = err?.code;
+        console.error('[handleEmailLogin] activation failed:', err);
         if (code === 'auth/email-already-in-use') {
           toast.error("Esa cuenta existe pero la contraseña no coincide. Verifícala con tu admin.");
         } else if (code === 'auth/weak-password') {
           toast.error("La contraseña debe tener al menos 6 caracteres.");
+        } else if (typeof err.message === 'string' && err.message.includes('index')) {
+          toast.error("Falta crear el índice de Firestore. Mira la consola del navegador para ver la URL.");
         } else {
           toast.error(err.message || "Error al activar tu cuenta. Intenta de nuevo.");
         }

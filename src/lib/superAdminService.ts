@@ -165,10 +165,20 @@ export interface MembershipResult {
 // Find ANY existing membership for this email across all stores. Used both to
 // link a user on first login and to refuse duplicate registrations.
 // Tolerant to legacy docs (missing storeId / authMethod fields).
+//
+// IMPORTANT: requires a Firestore COLLECTION_GROUP index on `email`. If the
+// index is missing the query throws with a URL to create it — see firestore.indexes.json.
 export async function findMembershipByEmail(email: string): Promise<MembershipResult | null> {
   if (!email) return null;
-  const q = query(collectionGroup(db, 'members'), where('email', '==', email));
-  const snap = await getDocs(q);
+  const normalized = email.trim().toLowerCase();
+  const q = query(collectionGroup(db, 'members'), where('email', '==', normalized));
+  let snap;
+  try {
+    snap = await getDocs(q);
+  } catch (err: any) {
+    console.error('[findMembershipByEmail] query failed:', err);
+    throw err;
+  }
   if (snap.empty) return null;
 
   const docSnap = snap.docs[0];
