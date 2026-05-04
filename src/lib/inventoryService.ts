@@ -1,9 +1,119 @@
 import { GoogleGenAI } from "@google/genai";
-import { Product, SaleRecord, AIInsight, Expense, InventoryAnalytics, InventoryStats, TaxCategory, TAX_CATEGORY_RATES } from "../types";
+import { Product, SaleRecord, AIInsight, Expense, TaxCategory, TAX_CATEGORY_RATES } from "../types";
+import {
+  groqGenerateText, groqGenerateVision, isGroqConfigured,
+  GroqTextMessage,
+} from "./groqClient";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// ────────────────────────────────────────────────────────────────────
+// PROVEEDORES — Groq primario, Gemini como fallback opcional.
+//
+// Estrategia: si GROQ_API_KEY está configurada, todo pasa por Groq.
+// Si Groq falla (red, 429, etc.) y GEMINI_API_KEY también está configurada,
+// se reintenta con Gemini. Si los dos fallan, devolvemos null/mensaje.
+//
+// Esto te quita la dependencia exclusiva de Google y resuelve el limit:0
+// que viene cuando un proyecto Google está bloqueado en free tier.
+// ────────────────────────────────────────────────────────────────────
 
-// ─── AI Brand Color Suggestion ────────────────────────────────────
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const isGeminiConfigured = (): boolean => Boolean(GEMINI_API_KEY);
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+export const isAIConfigured = (): boolean => isGroqConfigured() || isGeminiConfigured();
+
+// ── Wrapper texto: Groq → fallback Gemini ──────────────────────────
+interface AITextOptions {
+  systemPrompt?: string;
+  userPrompt: string;
+  history?: GroqTextMessage[];
+  jsonMode?: boolean;
+  maxTokens?: number;
+  temperature?: number;
+}
+
+async function aiText(opts: AITextOptions): Promise<string | null> {
+  // 1) Intento Groq
+  if (isGroqConfigured()) {
+    try {
+      return await groqGenerateText(opts);
+    } catch (err) {
+      console.warn("[AI] Groq failed, trying Gemini fallback:", err);
+    }
+  }
+  // 2) Fallback Gemini
+  if (isGeminiConfigured()) {
+    try {
+      // Gemini soporta history como `contents` con role+parts.
+      const contents = [
+        ...(opts.history || []).map(m => ({
+          role: m.role === 'assistant' ? 'model' : m.role,
+          parts: [{ text: m.content }],
+        })),
+        { role: 'user' as const, parts: [{ text: opts.userPrompt }] },
+      ];
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents,
+        config: {
+          systemInstruction: opts.systemPrompt,
+          maxOutputTokens: opts.maxTokens ?? 600,
+          ...(opts.jsonMode ? { responseMimeType: "application/json" } : {}),
+        },
+      });
+      return response.text || "";
+    } catch (err) {
+      console.error("[AI] Gemini also failed:", err);
+    }
+  }
+  return null;
+}
+
+// ── Wrapper visión: Groq Llama Scout → fallback Gemini ────────────
+interface AIVisionOptions {
+  prompt: string;
+  imageBase64: string;
+  mimeType?: string;
+  jsonMode?: boolean;
+  maxTokens?: number;
+}
+
+async function aiVision(opts: AIVisionOptions): Promise<string | null> {
+  if (isGroqConfigured()) {
+    try {
+      return await groqGenerateVision(opts);
+    } catch (err) {
+      console.warn("[AI Vision] Groq failed, trying Gemini fallback:", err);
+    }
+  }
+  if (isGeminiConfigured()) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: [
+          { text: opts.prompt },
+          { inlineData: { mimeType: opts.mimeType || "image/jpeg", data: opts.imageBase64 } },
+        ],
+        config: opts.jsonMode ? { responseMimeType: "application/json" } : {},
+      });
+      return response.text || "";
+    } catch (err) {
+      console.error("[AI Vision] Gemini also failed:", err);
+    }
+  }
+  return null;
+}
+
+// Helper: extrae JSON aunque venga envuelto en ```json ... ```
+const extractJson = (text: string): string => {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) return fenced[1].trim();
+  return text.trim();
+};
+
+// ────────────────────────────────────────────────────────────────────
+// AI Brand Color Suggestion
+// ────────────────────────────────────────────────────────────────────
 
 export interface BrandColorSuggestion {
   primaryColor: string;
@@ -16,7 +126,7 @@ export interface BrandColorSuggestion {
 }
 
 export async function suggestBrandColors(description: string, businessType: string): Promise<BrandColorSuggestion | null> {
-  if (!process.env.GEMINI_API_KEY) return null;
+  if (!isAIConfigured()) return null;
 
   const prompt = `Eres un experto en branding y diseño UI para apps de negocios latinoamericanos.
 Sugiere una paleta de colores y una tipografía adecuada para este negocio. Devuelve SOLO JSON con exactamente estos campos:
@@ -55,23 +165,21 @@ Reglas de color:
 - fontFamily: Una de las opciones mencionadas arriba que mejor represente al negocio.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: prompt,
-      config: { responseMimeType: "application/json", maxOutputTokens: 150 },
-    });
-    const result = JSON.parse(response.text || "{}");
-    if (result.primaryColor && result.secondaryColor && result.backgroundColor) return result as BrandColorSuggestion;
+    const text = await aiText({ userPrompt: prompt, jsonMode: true, maxTokens: 250 });
+    if (!text) return null;
+    const result = JSON.parse(extractJson(text));
+    if (result.primaryColor && result.secondaryColor && result.backgroundColor) {
+      return result as BrandColorSuggestion;
+    }
     return null;
   } catch {
     return null;
   }
 }
 
-// ─── AI Tax Category Suggestion ──────────────────────────────────
-// Sugiere la categoría tributaria DIAN para un producto según su nombre,
-// categoría comercial y descripción. Si Gemini no responde con algo válido,
-// devuelve null (la UI cae al default "general 19%").
+// ────────────────────────────────────────────────────────────────────
+// AI Tax Category Suggestion (DIAN Colombia)
+// ────────────────────────────────────────────────────────────────────
 
 export interface TaxSuggestion {
   taxCategory: TaxCategory;
@@ -85,7 +193,7 @@ export async function suggestProductTax(
   category?: string,
   description?: string
 ): Promise<TaxSuggestion | null> {
-  if (!process.env.GEMINI_API_KEY) return null;
+  if (!isAIConfigured()) return null;
   if (!productName?.trim()) return null;
 
   const prompt = `Eres un experto contable colombiano especializado en IVA según el Estatuto Tributario DIAN.
@@ -125,12 +233,9 @@ Responde SOLO con JSON válido en este formato exacto:
 }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: prompt,
-      config: { responseMimeType: "application/json", maxOutputTokens: 250 },
-    });
-    const result = JSON.parse(response.text || "{}");
+    const text = await aiText({ userPrompt: prompt, jsonMode: true, maxTokens: 250 });
+    if (!text) return null;
+    const result = JSON.parse(extractJson(text));
     const cat = result.taxCategory as TaxCategory;
     if (!cat || !(cat in TAX_CATEGORY_RATES)) return null;
     return {
@@ -147,7 +252,9 @@ Responde SOLO con JSON válido en este formato exacto:
   }
 }
 
-// ─── Chat Assistant ────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
+// Chat Assistant (ARIA)
+// ────────────────────────────────────────────────────────────────────
 
 function prepareBusinessContext(products: Product[], sales: SaleRecord[], expenses: Expense[] = [], storeDescription?: string): string {
   const now = new Date();
@@ -167,25 +274,20 @@ function prepareBusinessContext(products: Product[], sales: SaleRecord[], expens
   const revenueToday = todaySales.reduce((acc, s) => acc + s.totalAmount, 0);
   const revenueYesterday = yesterdaySales.reduce((acc, s) => acc + s.totalAmount, 0);
 
-  // Expense analysis
   const expensesToday = expenses.filter(e => e.date.startsWith(todayStr)).reduce((acc, e) => acc + e.amount, 0);
-  const expenses7d = expenses.filter(e => new Date(e.date) >= last7).reduce((acc, e) => acc + e.amount, 0);
-  
-  // Basic profit estimate (revenue - product cost - expenses)
+
   const totalCostOfProductsSold = sales.reduce((acc, sale) => {
     return acc + sale.items.reduce((itemAcc, item) => {
       const p = products.find(prod => prod.id === item.productId);
       return itemAcc + (item.quantity * (p?.costPrice || 0));
     }, 0);
   }, 0);
-  
   const netProfitTotal = sales.reduce((acc, s) => acc + s.totalAmount, 0) - totalCostOfProductsSold - expenses.reduce((acc, e) => acc + e.amount, 0);
 
   const lowStock = products.filter(p => p.quantity > 0 && p.quantity <= p.minStockLevel);
   const outOfStock = products.filter(p => p.quantity === 0);
   const totalInventoryValue = products.reduce((acc, p) => acc + (p.price * p.quantity), 0);
 
-  // Sales volume by product
   const productVolume: Record<string, { qty: number; revenue: number; name: string }> = {};
   sales.forEach(s => {
     s.items.forEach(item => {
@@ -205,7 +307,6 @@ function prepareBusinessContext(products: Product[], sales: SaleRecord[], expens
 
   const avgSaleValue = sales.length > 0 ? (sales.reduce((acc, s) => acc + s.totalAmount, 0) / sales.length) : 0;
 
-  // Busiest day of week
   const dayRevenue: Record<string, number> = {};
   sales.forEach(s => {
     const day = new Date(s.date).toLocaleDateString('es-CO', { weekday: 'long' });
@@ -229,6 +330,7 @@ Fecha/hora: ${now.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric'
 - Hoy (Gastos): $${expensesToday.toLocaleString('es-CO')} COP
 - Ayer (Ingresos): $${revenueYesterday.toLocaleString('es-CO')} COP
 - Últimos 7 días: $${revenue7d.toLocaleString('es-CO')} COP
+- Últimos 30 días: $${revenue30d.toLocaleString('es-CO')} COP
 - Utilidad Neta Total: $${netProfitTotal.toLocaleString('es-CO')} COP
 - Ticket promedio: $${Math.round(avgSaleValue).toLocaleString('es-CO')} COP
 - Día más activo: ${busiestDay}
@@ -250,8 +352,8 @@ export async function askAIAssistant(
   history: ChatMessage[] = [],
   expenses: Expense[] = []
 ): Promise<string> {
-  if (!process.env.GEMINI_API_KEY) {
-    return "⚠️ La IA no está configurada. Agrega tu GEMINI_API_KEY en el panel de Secrets.";
+  if (!isAIConfigured()) {
+    return "⚠️ La IA no está configurada. Agrega GROQ_API_KEY (recomendado) o GEMINI_API_KEY en tu archivo .env";
   }
 
   const systemInstruction = `Eres ARIA — Asistente de Retail con Inteligencia Artificial, especializada en negocios colombianos y latinoamericanos.
@@ -272,33 +374,32 @@ FORMATO:
 
 ${prepareBusinessContext(products, sales, expenses, storeDescription)}`;
 
-  const contents = [
-    ...history.map(msg => ({
-      role: msg.role,
-      parts: [{ text: msg.content }],
-    })),
-    { role: 'user' as const, parts: [{ text: userMessage }] },
-  ];
+  // Convertir historia al formato del wrapper (role assistant para el modelo)
+  const groqHistory: GroqTextMessage[] = history.map(m => ({
+    role: m.role === 'model' ? 'assistant' : 'user',
+    content: m.content,
+  }));
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents,
-      config: {
-        systemInstruction,
-        maxOutputTokens: 600,
-      },
-    });
-    return response.text?.trim() || "No pude generar una respuesta. Intenta de nuevo.";
-  } catch (error: any) {
-    console.error("AI chat error:", error);
-    if (error?.message?.includes("API_KEY")) return "⚠️ API Key inválida o no configurada.";
-    return "Hubo un error al contactar la IA. Verifica tu conexión e intenta de nuevo.";
+  const text = await aiText({
+    systemPrompt: systemInstruction,
+    userPrompt: userMessage,
+    history: groqHistory,
+    maxTokens: 600,
+    temperature: 0.7,
+  });
+
+  if (!text) {
+    return "Hubo un error al contactar la IA. Verifica tu API key (GROQ_API_KEY o GEMINI_API_KEY) en .env";
   }
+  return text.trim();
 }
 
+// ────────────────────────────────────────────────────────────────────
+// Vision: analizar imagen de producto
+// ────────────────────────────────────────────────────────────────────
+
 export async function analyzeProductImage(imageBase64: string): Promise<Partial<Product> | null> {
-  if (!process.env.GEMINI_API_KEY) return null;
+  if (!isAIConfigured()) return null;
 
   const prompt = `Analiza esta imagen de un producto para un sistema de inventario en Colombia.
 Extrae la siguiente información y devuélvela SOLO en formato JSON:
@@ -322,16 +423,15 @@ Si dudas, usa "general".
 Si no estás seguro de algo, deja el campo vacío o con un valor predeterminado coherente.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: [
-        { text: prompt },
-        { inlineData: { mimeType: "image/jpeg", data: imageBase64 } }
-      ],
-      config: { responseMimeType: "application/json" },
+    const text = await aiVision({
+      prompt,
+      imageBase64,
+      mimeType: "image/jpeg",
+      jsonMode: true,
+      maxTokens: 400,
     });
-    const raw = JSON.parse(response.text || "{}") as Partial<Product> & { taxCategory?: TaxCategory };
-    // Si la IA devolvió taxCategory válida, derivamos taxRate
+    if (!text) return null;
+    const raw = JSON.parse(extractJson(text)) as Partial<Product> & { taxCategory?: TaxCategory };
     if (raw.taxCategory && raw.taxCategory in TAX_CATEGORY_RATES) {
       raw.taxRate = TAX_CATEGORY_RATES[raw.taxCategory];
     }
@@ -342,82 +442,76 @@ Si no estás seguro de algo, deja el campo vacío o con un valor predeterminado 
   }
 }
 
+// ────────────────────────────────────────────────────────────────────
+// AI Insights — Replenishment & Business Analysis
+// ────────────────────────────────────────────────────────────────────
+
 export async function getAIReplenishmentSuggestions(products: Product[], sales: SaleRecord[], storeDescription?: string): Promise<AIInsight[]> {
-  if (!process.env.GEMINI_API_KEY) {
+  if (!isAIConfigured()) {
     return [{
       type: 'replenishment',
       title: "Configuración requerida",
-      description: "Por favor, configura tu GEMINI_API_KEY para recibir sugerencias de IA.",
+      description: "Agrega GROQ_API_KEY (gratis, sin tarjeta) o GEMINI_API_KEY en tu .env para activar las sugerencias de IA.",
       priority: 'medium'
     }];
   }
 
-  const prompt = `
-    Actúa como un experto en gestión de inventarios. Analiza los siguientes productos y su historial de ventas reciente para sugerir reposiciones.
-    
-    Contexto del negocio: ${storeDescription || "Tienda general"}
-    Productos: ${JSON.stringify(products.map(p => ({ id: p.id, name: p.name, brand: p.brand, code: p.code, stock: p.quantity, min: p.minStockLevel })))}
-    Ventas recientes: ${JSON.stringify(sales)}
-    
-    Responde en formato JSON con una lista de insights. Cada insight debe tener:
-    - type: "replenishment"
-    - title: un título corto
-    - description: explicación detallada de por qué reponer y cuánto
-    - priority: "low", "medium" o "high"
-    - productId: el ID del producto (opcional)
-  `;
+  const prompt = `Actúa como un experto en gestión de inventarios. Analiza los siguientes productos y su historial de ventas reciente para sugerir reposiciones.
+
+Contexto del negocio: ${storeDescription || "Tienda general"}
+Productos: ${JSON.stringify(products.map(p => ({ id: p.id, name: p.name, brand: p.brand, code: p.code, stock: p.quantity, min: p.minStockLevel })))}
+Ventas recientes: ${JSON.stringify(sales.slice(0, 50))}
+
+Responde en formato JSON con un objeto que contenga una lista "insights". Cada insight debe tener:
+- type: "replenishment"
+- title: un título corto
+- description: explicación detallada de por qué reponer y cuánto
+- priority: "low", "medium" o "high"
+- productId: el ID del producto (opcional)
+
+Ejemplo: { "insights": [{ "type": "replenishment", "title": "...", "description": "...", "priority": "high" }] }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      }
-    });
-
-    const result = JSON.parse(response.text || "[]");
-    return Array.isArray(result) ? result : [result];
+    const text = await aiText({ userPrompt: prompt, jsonMode: true, maxTokens: 800 });
+    if (!text) return [];
+    const result = JSON.parse(extractJson(text));
+    const list = Array.isArray(result) ? result : (result.insights || [result]);
+    return Array.isArray(list) ? list : [];
   } catch (error) {
-    console.error("Error calling Gemini:", error);
+    console.error("Error getting replenishment insights:", error);
     return [];
   }
 }
 
 export async function getAIBusinessAnalysis(products: Product[], sales: SaleRecord[], storeDescription?: string): Promise<AIInsight[]> {
-  if (!process.env.GEMINI_API_KEY) return [];
+  if (!isAIConfigured()) return [];
 
-  const prompt = `
-    Analiza el rendimiento del negocio basado en el inventario y ventas.
-    
-    Contexto del negocio: ${storeDescription || "Tienda general"}
-    Productos: ${JSON.stringify(products)}
-    Ventas: ${JSON.stringify(sales)}
-    
-    Genera insights estratégicos y dinámicos. Incluye comparaciones porcentuales si es posible (ej: "Ventas subieron X%").
-    Identifica productos de alta rotación o productos "muertos" (sin ventas).
-    
-    Responde en formato JSON con una lista de insights de tipo "analysis" o "prediction".
-    Cada insight debe tener:
-    - type: "analysis" | "prediction"
-    - title: título corto y llamativo
-    - description: análisis detallada, consejo de negocio o predicción de demanda
-    - priority: "low", "medium" o "high"
-  `;
+  const prompt = `Analiza el rendimiento del negocio basado en el inventario y ventas.
+
+Contexto del negocio: ${storeDescription || "Tienda general"}
+Productos: ${JSON.stringify(products.slice(0, 30))}
+Ventas: ${JSON.stringify(sales.slice(0, 50))}
+
+Genera insights estratégicos y dinámicos. Incluye comparaciones porcentuales si es posible (ej: "Ventas subieron X%").
+Identifica productos de alta rotación o productos "muertos" (sin ventas).
+
+Responde en formato JSON con un objeto que contenga una lista "insights" de tipo "analysis" o "prediction".
+Cada insight debe tener:
+- type: "analysis" | "prediction"
+- title: título corto y llamativo
+- description: análisis detallada, consejo de negocio o predicción de demanda
+- priority: "low", "medium" o "high"
+
+Ejemplo: { "insights": [{ "type": "analysis", "title": "...", "description": "...", "priority": "medium" }] }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      }
-    });
-
-    const result = JSON.parse(response.text || "[]");
-    return Array.isArray(result) ? result : [result];
+    const text = await aiText({ userPrompt: prompt, jsonMode: true, maxTokens: 800 });
+    if (!text) return [];
+    const result = JSON.parse(extractJson(text));
+    const list = Array.isArray(result) ? result : (result.insights || [result]);
+    return Array.isArray(list) ? list : [];
   } catch (error) {
-    console.error("Error calling Gemini:", error);
+    console.error("Error getting business analysis:", error);
     return [];
   }
 }

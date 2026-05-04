@@ -55,7 +55,7 @@ export function InventoryPage({
       {hasBranches && (
         <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border ${
           activeBranch
-            ? 'bg-indigo-50 border-indigo-100 text-indigo-700'
+            ? 'bg-indigo-50 border-indigo-100 text-brand-secondary'
             : 'bg-slate-50 border-slate-100 text-slate-600'
         }`}>
           <Store size={14} />
@@ -80,7 +80,7 @@ export function InventoryPage({
             <StatCard
               title="Total Productos"
               value={stats.totalProducts.toString()}
-              icon={<Package className="text-indigo-600" />}
+              icon={<Package className="text-brand-primary" />}
             />
             <StatCard
               title="Stock Bajo"
@@ -190,7 +190,7 @@ export function InventoryPage({
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                              className="h-8 text-xs border-indigo-200 text-brand-primary hover:bg-indigo-50"
                               onClick={() => {
                                 setRestockProductId(product.id);
                                 setInventoryTab("restock");
@@ -204,8 +204,18 @@ export function InventoryPage({
                     })}
                     {filteredProducts.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={hasBranches && !activeBranchId ? 8 : 7} className="h-32 text-center text-slate-400 italic">
-                          No se encontraron productos.
+                        <TableCell colSpan={hasBranches && !activeBranchId ? 8 : 7} className="h-64 text-center">
+                          <div className="flex flex-col items-center gap-3 py-6">
+                            <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center">
+                              <Package size={24} className="text-slate-300" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-slate-700">Sin productos</p>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                {searchTerm ? "Prueba con otra búsqueda." : "Crea tu primer producto desde Catálogo."}
+                              </p>
+                            </div>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )}
@@ -256,12 +266,12 @@ export function InventoryPage({
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <BrainCircuit size={16} className="text-indigo-600" />
-                        <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Sugerencia IA</span>
+                        <BrainCircuit size={16} className="text-brand-primary" />
+                        <span className="text-xs font-bold text-brand-secondary uppercase tracking-wider">Sugerencia IA</span>
                       </div>
-                      <Badge className="bg-indigo-600 text-white text-[10px]">Optimizado</Badge>
+                      <Badge className="bg-brand-primary text-white text-[10px]">Optimizado</Badge>
                     </div>
-                    <p className="text-xs text-indigo-600 mb-3 leading-relaxed">
+                    <p className="text-xs text-brand-primary mb-3 leading-relaxed">
                       Basado en ventas recientes, se recomienda reponer{" "}
                       <span className="font-bold text-indigo-800">{getRestockSuggestion(restockProductId)} unidades</span>{" "}
                       para cubrir los próximos 30 días.
@@ -269,7 +279,7 @@ export function InventoryPage({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full h-8 text-xs bg-white border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-semibold"
+                      className="w-full h-8 text-xs bg-white border-indigo-200 text-brand-primary hover:bg-indigo-50 font-semibold"
                       onClick={() => setRestockQuantity(getRestockSuggestion(restockProductId).toString())}
                     >
                       Aplicar Sugerencia
@@ -290,7 +300,7 @@ export function InventoryPage({
                   />
                 </div>
                 <Button
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100"
+                  className="w-full bg-brand-primary hover:bg-brand-secondary text-white shadow-md shadow-indigo-100"
                   onClick={handleRestock}
                 >
                   <Plus size={16} className="mr-2" />

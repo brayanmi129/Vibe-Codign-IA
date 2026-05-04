@@ -37,16 +37,49 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCurrency } from "@/lib/formatters";
 import { Expense, InventoryAnalytics } from "@/types";
 
+import { Product, SaleRecord } from "@/types";
+
 interface FinancesPageProps {
   expenses: Expense[];
   analytics: InventoryAnalytics;
+  products?: Product[];
+  sales?: SaleRecord[];
   onAddExpense: (expense: Omit<Expense, "id" | "date" | "userId">) => void;
   onDeleteExpense: (id: string) => void;
 }
 
-export function FinancesPage({ expenses, analytics, onAddExpense, onDeleteExpense }: FinancesPageProps) {
+export function FinancesPage({ expenses, analytics, products = [], sales = [], onAddExpense, onDeleteExpense }: FinancesPageProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = React.useState(false);
   const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+
+  // ── Insights reales (en lugar de texto hardcoded) ──────────────────
+  // Margen bruto promedio: solo cuenta productos vendidos con costPrice conocido.
+  const grossMarginInfo = React.useMemo(() => {
+    let revenueWithCost = 0;
+    let costOfSold = 0;
+    for (const sale of sales) {
+      for (const item of (sale.items || [])) {
+        const p = products.find(prod => prod.id === item.productId);
+        if (p?.costPrice && p.costPrice > 0) {
+          revenueWithCost += item.totalPrice;
+          costOfSold += item.quantity * p.costPrice;
+        }
+      }
+    }
+    if (revenueWithCost === 0) return null;
+    const margin = ((revenueWithCost - costOfSold) / revenueWithCost) * 100;
+    return { margin, revenueWithCost };
+  }, [products, sales]);
+
+  // Top categoría de gasto (la que más representa el total)
+  const topExpenseCategory = React.useMemo(() => {
+    if (expenses.length === 0) return null;
+    const byCat: Record<string, number> = {};
+    for (const e of expenses) byCat[e.category] = (byCat[e.category] || 0) + e.amount;
+    const [name, amount] = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
+    const pct = totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0;
+    return { name, amount, pct };
+  }, [expenses, totalExpenses]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -73,7 +106,7 @@ export function FinancesPage({ expenses, analytics, onAddExpense, onDeleteExpens
         </div>
         
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger render={<Button className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-12 px-6 shadow-lg shadow-indigo-200" />}>
+          <DialogTrigger render={<Button className="bg-brand-primary hover:bg-brand-secondary text-white rounded-2xl h-12 px-6 shadow-lg shadow-indigo-200" />}>
             <Plus size={18} className="mr-2" /> Registrar Gasto
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
@@ -115,7 +148,7 @@ export function FinancesPage({ expenses, analytics, onAddExpense, onDeleteExpens
                 </div>
               </div>
               <DialogFooter>
-                <Button type="submit" className="bg-indigo-600 text-white rounded-xl">Guardar Gasto</Button>
+                <Button type="submit" className="bg-brand-primary text-white rounded-xl">Guardar Gasto</Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -150,7 +183,7 @@ export function FinancesPage({ expenses, analytics, onAddExpense, onDeleteExpens
           // Cuando hay productos sin costo, la utilidad es parcial. Pintamos
           // distinto la card y damos el aviso explícito en lugar de inflar el número.
           return (
-            <Card className={`${isPartial ? 'bg-amber-500' : 'bg-indigo-600'} text-white border-none shadow-xl ${isPartial ? 'shadow-amber-200' : 'shadow-indigo-200'} overflow-hidden relative group`}>
+            <Card className={`${isPartial ? 'bg-amber-500' : 'bg-brand-primary'} text-white border-none shadow-xl ${isPartial ? 'shadow-amber-200' : 'shadow-indigo-200'} overflow-hidden relative group`}>
               <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none group-hover:scale-110 transition-transform">
                 {isPartial ? <AlertTriangle size={80} className="text-white" /> : <Wallet size={80} className="text-white" />}
               </div>
@@ -220,9 +253,20 @@ export function FinancesPage({ expenses, analytics, onAddExpense, onDeleteExpens
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center p-20 text-slate-300">
-                  <Receipt size={64} className="opacity-10 mb-4" />
-                  <p className="text-sm font-medium italic">No se han registrado gastos aún.</p>
+                <div className="flex flex-col items-center justify-center p-12 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center mb-4">
+                    <Receipt size={28} className="text-slate-300" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-700">Aún no registras gastos</p>
+                  <p className="text-xs text-slate-400 mt-1 mb-5 max-w-xs">
+                    Registra arriendo, servicios, sueldos y demás para que tu utilidad neta refleje la realidad.
+                  </p>
+                  <Button
+                    onClick={() => setIsAddDialogOpen(true)}
+                    className="bg-brand-primary hover:bg-brand-secondary text-white rounded-xl"
+                  >
+                    <Plus size={16} className="mr-2" /> Registrar primer gasto
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -237,22 +281,43 @@ export function FinancesPage({ expenses, analytics, onAddExpense, onDeleteExpens
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Margen real calculado de tus ventas */}
             <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-2">
-              <p className="text-xs font-bold text-indigo-300 uppercase tracking-widest">Margen de Ganancia</p>
-              <p className="text-sm leading-relaxed text-slate-300">
-                Tu margen bruto promedio actual es del **32%**. Para negocios de este tipo, el ideal es superar el **35%**. Considera ajustar precios en productos de baja rotación.
-              </p>
-            </div>
-            
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-2">
-              <p className="text-xs font-bold text-amber-300 uppercase tracking-widest">Alerta de Costos</p>
-              <p className="text-sm leading-relaxed text-slate-300">
-                Los gastos de **Transporte** han subido un **15%** esta semana. Revisa si puedes consolidar pedidos de proveedores para ahorrar.
-              </p>
+              <p className="text-xs font-bold text-indigo-300 uppercase tracking-widest">Margen Bruto Promedio</p>
+              {grossMarginInfo ? (
+                <p className="text-sm leading-relaxed text-slate-300">
+                  Tu margen bruto promedio es del <span className="font-bold text-white">{grossMarginInfo.margin.toFixed(1)}%</span>.{' '}
+                  {grossMarginInfo.margin >= 35
+                    ? 'Excelente — estás por encima del 35% recomendado.'
+                    : grossMarginInfo.margin >= 20
+                    ? 'Está dentro del rango aceptable, pero el ideal es superar el 35%.'
+                    : 'Está bajo. Revisa si puedes subir precios o reducir costos de los productos de baja rotación.'}
+                </p>
+              ) : (
+                <p className="text-sm leading-relaxed text-slate-400 italic">
+                  Aún no podemos calcular tu margen — necesitas registrar el precio de costo de tus productos vendidos.
+                </p>
+              )}
             </div>
 
-            <Button variant="outline" className="w-full h-12 border-white/10 text-white hover:bg-white/5 font-bold rounded-2xl">
-              Generar reporte PDF
+            {/* Top categoría de gastos basado en datos reales */}
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-2">
+              <p className="text-xs font-bold text-amber-300 uppercase tracking-widest">Categoría con Más Gastos</p>
+              {topExpenseCategory ? (
+                <p className="text-sm leading-relaxed text-slate-300">
+                  <span className="font-bold text-white">{topExpenseCategory.name}</span> representa el{' '}
+                  <span className="font-bold text-amber-200">{topExpenseCategory.pct.toFixed(0)}%</span> de tus gastos
+                  ({formatCurrency(topExpenseCategory.amount)}). Si puedes reducir esa partida, mejorarás directamente tu utilidad neta.
+                </p>
+              ) : (
+                <p className="text-sm leading-relaxed text-slate-400 italic">
+                  Aún no has registrado gastos. Empieza añadiendo los gastos operativos (arriendo, servicios, etc.) para ver esta sugerencia.
+                </p>
+              )}
+            </div>
+
+            <Button variant="outline" className="w-full h-12 border-white/10 text-white hover:bg-white/5 font-bold rounded-2xl" disabled>
+              Generar reporte PDF (próximamente)
             </Button>
           </CardContent>
         </Card>

@@ -1032,6 +1032,29 @@ const handleDownloadInvoice = () => {
 
   const removeFromCart = (productId: string) => setCart(cart.filter(item => item.productId !== productId));
 
+  // Cambia la cantidad de un item del carrito. Si newQuantity ≤ 0, lo remueve.
+  // Si supera el stock disponible, recorta y avisa.
+  const updateCartQuantity = (productId: string, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      setCart(prev => prev.filter(item => item.productId !== productId));
+      return;
+    }
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    const available = activeBranchId
+      ? (product.branchStock?.[activeBranchId] ?? 0)
+      : product.quantity;
+    if (newQuantity > available) {
+      toast.error(`Solo hay ${available} unidades de ${product.name}`);
+      return;
+    }
+    setCart(prev => prev.map(item =>
+      item.productId === productId
+        ? { ...item, quantity: newQuantity, totalPrice: newQuantity * item.unitPrice }
+        : item
+    ));
+  };
+
   const isAdmin = memberRole === "admin";
   const canEdit = memberRole === "admin" || memberRole === "employee";
 
@@ -1520,9 +1543,11 @@ const handleDownloadInvoice = () => {
                 />
               )}
               {activeTab === "finances" && isAdmin && (
-                <FinancesPage 
+                <FinancesPage
                   expenses={expenses}
                   analytics={analytics}
+                  products={products}
+                  sales={sales}
                   onAddExpense={handleAddExpense}
                   onDeleteExpense={handleDeleteExpense}
                 />
@@ -1537,12 +1562,13 @@ const handleDownloadInvoice = () => {
               )}
               {activeTab === "new-sale" && (
                 <NewSalePage
-                  products={products}
+                  products={effectiveProducts}
                   searchTerm={searchTerm}
                   setSearchTerm={setSearchTerm}
                   cart={cart}
                   addToCart={addToCart}
                   removeFromCart={removeFromCart}
+                  updateCartQuantity={updateCartQuantity}
                   handleStartCheckout={handleStartCheckout}
                 />
               )}

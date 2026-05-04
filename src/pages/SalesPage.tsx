@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, ShoppingCart, DollarSign, TrendingUp, Download, Eye, MapPin, Phone, User as UserIcon } from "lucide-react";
+import { Calendar, ShoppingCart, DollarSign, TrendingUp, Download, Eye, MapPin, Phone, User as UserIcon, MessageCircle } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency } from "@/lib/formatters";
 import { downloadInvoicePdf } from "@/lib/invoiceService";
@@ -118,7 +118,7 @@ export function SalesPage({
         <StatCard
           title="Unidades Vendidas"
           value={totalUnits.toString()}
-          icon={<ShoppingCart className="text-indigo-600" />}
+          icon={<ShoppingCart className="text-brand-primary" />}
         />
         <StatCard
           title="Ingresos Totales"
@@ -128,7 +128,7 @@ export function SalesPage({
         <StatCard
           title="Promedio por Venta"
           value={formatCurrency(filteredSales.length ? (totalRevenue / filteredSales.length) : 0)}
-          icon={<TrendingUp className="text-indigo-600" />}
+          icon={<TrendingUp className="text-brand-primary" />}
         />
       </div>
 
@@ -163,7 +163,7 @@ export function SalesPage({
                           <TableRow key={sale.id}>
                             <TableCell>
                               {sale.invoiceNumber ? (
-                                <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-lg">
+                                <span className="font-mono text-xs font-bold text-brand-secondary bg-indigo-50 px-2 py-1 rounded-lg">
                                   {sale.invoiceNumber}
                                 </span>
                               ) : (
@@ -194,7 +194,7 @@ export function SalesPage({
                             </TableCell>
                             <TableCell>
                               {branchName ? (
-                                <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px]">
+                                <Badge variant="secondary" className="bg-indigo-50 text-brand-secondary text-[10px]">
                                   {branchName}
                                 </Badge>
                               ) : <span className="text-slate-300 text-xs">—</span>}
@@ -221,7 +221,7 @@ export function SalesPage({
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                    className="h-7 w-7 text-indigo-400 hover:text-brand-primary hover:bg-indigo-50"
                                     title={`Descargar ${sale.invoiceNumber || 'factura'}`}
                                     onClick={() => downloadInvoicePdf({
                                       sale,
@@ -239,8 +239,18 @@ export function SalesPage({
                       })}
                     {filteredSales.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-32 text-center text-slate-400 italic">
-                          No hay ventas registradas para este día.
+                        <TableCell colSpan={8} className="h-64 text-center">
+                          <div className="flex flex-col items-center gap-3 py-6">
+                            <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center">
+                              <ShoppingCart size={24} className="text-slate-300" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-slate-700">Sin ventas en este día</p>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                Cambia el filtro de fecha o registra una nueva venta para empezar.
+                              </p>
+                            </div>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )}
@@ -282,15 +292,25 @@ export function SalesPage({
                           <TableRow key={group.date}>
                             <TableCell className="font-medium">{new Date(group.date).toLocaleDateString()}</TableCell>
                             <TableCell>{group.units}</TableCell>
-                            <TableCell className="text-right font-bold text-indigo-600">
+                            <TableCell className="text-right font-bold text-brand-primary">
                               {formatCurrency(group.total)}
                             </TableCell>
                           </TableRow>
                         ))}
                         {sortedGrouped.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={3} className="h-32 text-center text-slate-400 italic">
-                              No hay datos para el rango seleccionado.
+                            <TableCell colSpan={3} className="h-64 text-center">
+                              <div className="flex flex-col items-center gap-3 py-6">
+                                <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center">
+                                  <Calendar size={24} className="text-slate-300" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-slate-700">Sin datos en este rango</p>
+                                  <p className="text-xs text-slate-400 mt-0.5">
+                                    Prueba seleccionando otra semana o mes.
+                                  </p>
+                                </div>
+                              </div>
                             </TableCell>
                           </TableRow>
                         )}
@@ -353,7 +373,7 @@ export function SalesPage({
                   <Separator className="bg-slate-200/50 my-1" />
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-black uppercase text-slate-900">Total</span>
-                    <span className="text-xl font-black text-indigo-600 tracking-tighter">{formatCurrency(selectedReceipt.totalAmount)}</span>
+                    <span className="text-xl font-black text-brand-primary tracking-tighter">{formatCurrency(selectedReceipt.totalAmount)}</span>
                   </div>
                 </div>
 
@@ -376,17 +396,47 @@ export function SalesPage({
               <div className="bg-slate-50 p-4 text-center border-t border-slate-100">
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4">¡Gracias por tu compra!</p>
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1 rounded-xl h-10 text-[11px] font-bold uppercase border-slate-200">Compartir</Button>
-                  <Button 
-                    variant="default" 
-                    className="flex-1 bg-slate-900 text-white rounded-xl h-10 text-[11px] font-bold uppercase"
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-xl h-10 text-[11px] font-bold uppercase border-slate-200 gap-1.5"
+                    onClick={() => {
+                      // Construye mensaje WhatsApp con resumen + link al PDF si existe.
+                      // Si el cliente tiene teléfono → abre chat directo; si no → wa.me sin número (selector de contacto).
+                      const lines = [
+                        `Hola${selectedReceipt.customer?.fullName ? ` ${selectedReceipt.customer.fullName}` : ''} 👋`,
+                        ``,
+                        `*${currentStore.name}* — Recibo ${selectedReceipt.invoiceNumber || `#${selectedReceipt.id.slice(-6).toUpperCase()}`}`,
+                        `Fecha: ${new Date(selectedReceipt.date).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })}`,
+                        ``,
+                        ...selectedReceipt.items.map(i => `• ${i.productName} × ${i.quantity} = ${formatCurrency(i.totalPrice)}`),
+                        ``,
+                        `*Total: ${formatCurrency(selectedReceipt.totalAmount)}*`,
+                      ];
+                      if (selectedReceipt.invoicePdfUrl) {
+                        lines.push('', `📄 Factura PDF: ${selectedReceipt.invoicePdfUrl}`);
+                      }
+                      const text = encodeURIComponent(lines.join('\n'));
+                      const phoneRaw = selectedReceipt.customer?.phone?.replace(/\D/g, '') || '';
+                      // Si el teléfono no tiene código de país, asumimos Colombia (+57)
+                      const phone = phoneRaw && phoneRaw.length === 10 ? `57${phoneRaw}` : phoneRaw;
+                      const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+                      window.open(url, '_blank', 'noopener,noreferrer');
+                    }}
+                  >
+                    <MessageCircle size={13} /> WhatsApp
+                  </Button>
+                  <Button
+                    variant="default"
+                    className="flex-1 bg-slate-900 text-white rounded-xl h-10 text-[11px] font-bold uppercase gap-1.5 disabled:opacity-50"
+                    disabled={!selectedReceipt.customer}
+                    title={!selectedReceipt.customer ? 'Necesitas datos del cliente para generar PDF' : 'Descargar factura PDF'}
                     onClick={() => {
                       if (selectedReceipt.customer) {
                         downloadInvoicePdf({ sale: selectedReceipt, store: currentStore, customer: selectedReceipt.customer });
                       }
                     }}
                   >
-                    PDF
+                    <Download size={13} /> PDF
                   </Button>
                 </div>
               </div>

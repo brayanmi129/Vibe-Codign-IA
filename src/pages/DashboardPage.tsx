@@ -89,7 +89,7 @@ export function DashboardPage({ analytics, stats, salesHistoryData, onOpenAI }: 
           <StatCard
             title="Ingresos Semana"
             value={formatCurrency(analytics.thisWeekRevenue)}
-            icon={<DollarSign className="text-indigo-600" />}
+            icon={<DollarSign className="text-brand-primary" />}
             trend={`${analytics.weekChange >= 0 ? '+' : ''}${analytics.weekChange.toFixed(1)}%`}
             trendUp={analytics.weekChange >= 0}
             description="vs. semana anterior"

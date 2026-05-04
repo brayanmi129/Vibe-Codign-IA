@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Minus, Search, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { Product, SaleItem } from "@/types";
 
@@ -16,11 +16,12 @@ interface NewSalePageProps {
   cart: SaleItem[];
   addToCart: (product: Product, qty: number) => void;
   removeFromCart: (productId: string) => void;
+  updateCartQuantity?: (productId: string, newQuantity: number) => void;
   handleStartCheckout: () => void;
 }
 
 export function NewSalePage({
-  products, searchTerm, setSearchTerm, cart, addToCart, removeFromCart, handleStartCheckout,
+  products, searchTerm, setSearchTerm, cart, addToCart, removeFromCart, updateCartQuantity, handleStartCheckout,
 }: NewSalePageProps) {
   const cartTotal = cart.reduce((acc, item) => acc + item.totalPrice, 0);
 
@@ -69,12 +70,12 @@ export function NewSalePage({
                           </Badge>
                         </div>
                         <div className="flex justify-between items-center mt-4">
-                          <span className="text-lg font-bold text-indigo-600">{formatCurrency(product.price)}</span>
+                          <span className="text-lg font-bold text-brand-primary">{formatCurrency(product.price)}</span>
                           <Button
                             size="sm"
                             disabled={product.quantity <= 0}
                             onClick={() => addToCart(product, 1)}
-                            className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-none"
+                            className="bg-indigo-50 text-brand-primary hover:bg-indigo-100 border-none"
                           >
                             <Plus size={14} className="mr-1" /> Añadir
                           </Button>
@@ -91,30 +92,63 @@ export function NewSalePage({
           <CardHeader className="border-b border-slate-100">
             <div className="flex justify-between items-center">
               <CardTitle className="text-lg font-bold">Resumen de Venta</CardTitle>
-              <Badge className="bg-indigo-600">{cart.length} ítems</Badge>
+              <Badge className="bg-brand-primary">{cart.length} ítems</Badge>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             <ScrollArea className="max-h-[400px]">
               {cart.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 italic">
-                  El carrito está vacío.
+                <div className="p-10 flex flex-col items-center text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center mb-3">
+                    <Plus size={24} className="text-slate-300" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-700">Carrito vacío</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-[220px]">
+                    Busca un producto a la izquierda y haz clic en "Añadir" para empezar.
+                  </p>
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
                   {cart.map(item => (
-                    <div key={item.productId} className="p-4 flex justify-between items-center">
-                      <div className="flex-1">
-                        <h5 className="text-sm font-medium text-slate-900">{item.productName}</h5>
+                    <div key={item.productId} className="p-4 flex justify-between items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <h5 className="text-sm font-medium text-slate-900 truncate">{item.productName}</h5>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-slate-500">{formatCurrency(item.unitPrice)} x {item.quantity}</span>
-                          <span className="text-xs font-bold text-indigo-600">{formatCurrency(item.totalPrice)}</span>
+                          <span className="text-[11px] text-slate-500">{formatCurrency(item.unitPrice)} c/u</span>
+                          <span className="text-[11px] font-bold text-brand-primary">= {formatCurrency(item.totalPrice)}</span>
                         </div>
+                      </div>
+                      {/* Controles de cantidad +/- */}
+                      <div className="flex items-center gap-1 bg-slate-50 rounded-lg p-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 hover:bg-white"
+                          aria-label="Disminuir cantidad"
+                          onClick={() => updateCartQuantity?.(item.productId, item.quantity - 1)}
+                          disabled={!updateCartQuantity}
+                        >
+                          <Minus size={12} />
+                        </Button>
+                        <span className="w-7 text-center text-sm font-bold text-slate-900 tabular-nums">
+                          {item.quantity}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 hover:bg-white"
+                          aria-label="Aumentar cantidad"
+                          onClick={() => updateCartQuantity?.(item.productId, item.quantity + 1)}
+                          disabled={!updateCartQuantity}
+                        >
+                          <Plus size={12} />
+                        </Button>
                       </div>
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="text-slate-400 hover:text-red-500"
+                        className="text-slate-400 hover:text-red-500 flex-shrink-0"
+                        aria-label="Quitar del carrito"
                         onClick={() => removeFromCart(item.productId)}
                       >
                         <Trash2 size={14} />
