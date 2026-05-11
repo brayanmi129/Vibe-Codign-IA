@@ -185,11 +185,6 @@ export function LoginPage({
           </Card>
 
           <div className="flex flex-col gap-4 text-center">
-            <p className="text-xs text-slate-400 font-medium leading-relaxed px-4">
-              Si eres empleado o super admin, tu cuenta ya fue creada por tu administrador.
-              Usa el método (Google o contraseña) que él configuró para ti.
-            </p>
-
             <div className="pt-2">
               <div className="p-4 rounded-3xl bg-emerald-50 border border-emerald-100 inline-block w-full">
                 <p className="text-xs text-emerald-600 font-bold mb-3 uppercase tracking-wider">¿Quieres registrar tu propio negocio?</p>
