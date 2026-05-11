@@ -90,13 +90,6 @@ export function CustomersPage({ customers, sales }: CustomersPageProps) {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-6"
           >
-            <div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Clientes</h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Cada persona o empresa que ha comprado en tu tienda.
-              </p>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <StatCard title="Total Clientes" value={stats.totalCustomers.toString()} icon={<Users className="text-brand-primary" />} />
               <StatCard title="Recurrentes" value={stats.recurring.toString()} icon={<Star className="text-amber-500" />} />

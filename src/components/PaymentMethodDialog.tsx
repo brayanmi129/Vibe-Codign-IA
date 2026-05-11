@@ -80,15 +80,28 @@ export function PaymentMethodDialog({
     }
   }, [open]);
 
-  // ── Auto-rellenar el campo "valor a cancelar" con lo restante ─
+  // ── Auto-rellenar el campo "valor a cancelar" ──────────────────
+  // 1) Al abrir el modal: precarga los TRES tabs con el total. Así no importa
+  //    si el usuario cambia de pestaña, el valor siempre está ahí.
   useEffect(() => {
+    if (!open) return;
+    const r = totalAmount > 0 ? String(totalAmount) : "";
+    setCashAmount(r);
+    setCardAmount(r);
+    setTransferAmount(r);
+  }, [open, totalAmount]);
+
+  // 2) Tras añadir/quitar un pago, vuelve a rellenar el tab activo con lo que
+  //    queda por pagar — sólo si está vacío (addCashPayment lo deja en "" al
+  //    pushear el pago). Si el usuario escribió un valor parcial, no lo pisamos.
+  useEffect(() => {
+    if (!open) return;
     const r = remaining > 0 ? String(remaining) : "";
     if (activeTab === "efectivo" && !cashAmount) setCashAmount(r);
     else if (activeTab === "tarjeta" && !cardAmount) setCardAmount(r);
     else if (activeTab === "transferencia" && !transferAmount) setTransferAmount(r);
-    // Dependencias intencionalmente sin los amount fields (evita loops)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, remaining]);
+  }, [remaining, activeTab]);
 
   // ── Handlers de inputs ──────────────────────────────────────
   const handleAmountChange =
