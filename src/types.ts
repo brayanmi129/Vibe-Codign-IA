@@ -108,9 +108,27 @@ export interface SaleItem {
 }
 
 // 🆕 NUEVO: datos del cliente para la factura
+// Tipos de documento DIAN
+export type IdType = 'CC' | 'CE' | 'PA' | 'NIT';
+
+export const ID_TYPE_LABELS: Record<IdType, string> = {
+  CC: 'Cédula de Ciudadanía',
+  CE: 'Cédula de Extranjería',
+  PA: 'Pasaporte',
+  NIT: 'NIT (Empresa)',
+};
+
+export const ID_TYPE_SHORT: Record<IdType, string> = {
+  CC: 'C.C.',
+  CE: 'C.E.',
+  PA: 'Pasaporte',
+  NIT: 'NIT',
+};
+
 export interface Customer {
-  fullName: string;       // Obligatorio
-  idNumber: string;       // Obligatorio (cédula)
+  fullName: string;       // Obligatorio — nombre o razón social
+  idType?: IdType;        // Opcional (retrocompat). Si no viene se asume 'CC'.
+  idNumber: string;       // Obligatorio (cédula / NIT / pasaporte)
   phone?: string;         // Opcional
   address?: string;       // Opcional
   email?: string;         // Opcional

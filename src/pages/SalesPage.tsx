@@ -17,6 +17,7 @@ import { downloadInvoicePdf, calculateTotalsFromItems } from "@/lib/invoiceServi
 import { exportSalesWorkbook } from "@/components/ExcelExport";
 import {
   SaleRecord, Branch, Store, TaxCategory, TAX_CATEGORY_LABELS, TAX_CATEGORY_RATES,
+  ID_TYPE_SHORT,
 } from "@/types";
 import {
   Dialog,
@@ -345,7 +346,9 @@ export function SalesPage({
                               {sale.customer ? (
                                 <div>
                                   <p className="text-xs font-semibold text-slate-800">{sale.customer.fullName}</p>
-                                  <p className="text-[10px] text-slate-400">{sale.customer.idNumber}</p>
+                                  <p className="text-[10px] text-slate-400">
+                                    {ID_TYPE_SHORT[sale.customer.idType || 'CC']} {sale.customer.idNumber}
+                                  </p>
                                 </div>
                               ) : (
                                 <span className="text-slate-300 text-xs italic">Anónimo</span>

@@ -13,6 +13,7 @@ import {
   signOut,
   onAuthStateChanged,
   linkWithCredential,
+  sendPasswordResetEmail,
   OAuthCredential,
   User
 } from 'firebase/auth';
@@ -36,6 +37,7 @@ export {
   signOut,
   onAuthStateChanged,
   linkWithCredential,
+  sendPasswordResetEmail,
   GoogleAuthProvider,
   collection,
   collectionGroup,

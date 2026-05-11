@@ -2,7 +2,7 @@ import React from 'react';
 import * as XLSX from 'xlsx';
 import { Button } from './ui/button';
 import { FileSpreadsheet } from 'lucide-react';
-import { SaleRecord, Product, TAX_CATEGORY_RATES, TAX_CATEGORY_LABELS, TaxCategory } from '../types';
+import { SaleRecord, Product, TAX_CATEGORY_RATES, TAX_CATEGORY_LABELS, TaxCategory, ID_TYPE_SHORT } from '../types';
 import { calculateTotalsFromItems } from '../lib/invoiceService';
 
 // Plantilla para CREAR productos nuevos — sin columna "Código" (se genera automático).
@@ -104,6 +104,7 @@ export function prepareSalesForExport(sales: SaleRecord[]) {
       Factura: sale.invoiceNumber || sale.id,
       Fecha: new Date(sale.date).toLocaleString('es-CO'),
       Cliente: sale.customer?.fullName || 'Anónimo',
+      'Tipo Doc': sale.customer ? ID_TYPE_SHORT[sale.customer.idType || 'CC'] : '',
       Identificación: sale.customer?.idNumber || '',
       Productos: sale.items.map(i => `${i.productName} (x${i.quantity})`).join('; '),
       Unidades: sale.items.reduce((acc, i) => acc + i.quantity, 0),

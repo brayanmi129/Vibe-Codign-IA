@@ -7,7 +7,7 @@ import * as React from "react";
 import { useState, useEffect, useMemo } from "react";
 import {
   LayoutDashboard, Package, AlertTriangle, Plus, Edit2,
-  BrainCircuit, Menu, X, ShoppingCart, RefreshCw, Wallet
+  BrainCircuit, Menu, X, ShoppingCart, RefreshCw
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import {
   auth, db, googleProvider, signInWithPopup, signInWithEmailAndPassword,
   signInAnonymously, createUserWithEmailAndPassword, updateProfile, updatePassword,
-  reauthenticateWithCredential, EmailAuthProvider, signOut,
+  reauthenticateWithCredential, EmailAuthProvider, signOut, sendPasswordResetEmail,
   onAuthStateChanged,
   collection, doc, setDoc, updateDoc, deleteDoc,
   getDoc, getDocs, query, orderBy, onSnapshot, addDoc, serverTimestamp,
@@ -67,7 +67,6 @@ import { SalesPage } from "./pages/SalesPage";
 import { AIPage } from "./pages/AIPage";
 import { NewSalePage } from "./pages/NewSalePage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { FinancesPage } from "./pages/FinancesPage";
 import { LoginPage } from "./pages/LoginPage";
 
 export default function App() {
@@ -876,6 +875,31 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
   };
 
   // Google sign-in. Onboarding flow is allowed to bypass the pre-registration
+  // Envía email de reset de contraseña. Por seguridad (anti-enumeración) NO
+  // distinguimos entre "email no existe" y "email enviado" — siempre devolvemos
+  // éxito al UI. El error real se loguea silenciosamente.
+  const handlePasswordReset = async (email: string): Promise<void> => {
+    const cleaned = email.trim().toLowerCase();
+    if (!cleaned) throw new Error("Ingresa un email válido");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned)) throw new Error("Formato de email inválido");
+    try {
+      await sendPasswordResetEmail(auth, cleaned);
+    } catch (err: any) {
+      // auth/user-not-found y similares → silenciar (anti-enumeración).
+      // Otros errores reales (red, throttling) sí los re-lanzamos.
+      const code = err?.code as string | undefined;
+      if (code && (code === 'auth/user-not-found' || code === 'auth/invalid-email')) {
+        console.debug('[handlePasswordReset] suppressed:', code);
+        return;
+      }
+      if (code === 'auth/too-many-requests') {
+        throw new Error("Demasiados intentos. Espera unos minutos antes de volver a intentarlo.");
+      }
+      console.error('[handlePasswordReset] failed:', err);
+      throw new Error("No se pudo enviar el correo. Inténtalo más tarde.");
+    }
+  };
+
   // check (the wizard captures the admin's identity here and creates the store
   // afterwards). Regular logins must match a super admin or a member entry
   // configured with authMethod='google'.
@@ -1074,7 +1098,9 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       const saleId = `sale_${Date.now()}`;
       const invoiceNumber = generateInvoiceNumber(sales.length);
       const cleanCustomer: Customer = {
-        fullName: customer.fullName, idNumber: customer.idNumber,
+        fullName: customer.fullName,
+        idType: customer.idType || 'CC',
+        idNumber: customer.idNumber,
         ...(customer.phone && { phone: customer.phone }),
         ...(customer.address && { address: customer.address }),
         ...(customer.email && { email: customer.email }),
@@ -1341,6 +1367,7 @@ const handleDownloadInvoice = () => {
             isAuthLoading={isAuthLoading}
             handleEmailLogin={handleEmailLogin}
             handleGoogleLogin={handleGoogleLogin}
+            handlePasswordReset={handlePasswordReset}
           />
         </>
       );
@@ -1555,18 +1582,9 @@ const handleDownloadInvoice = () => {
               icon={<ShoppingCart size={18} />} 
               label="Ventas" 
             />
-            {isAdmin && (
-              <NavItem 
-                dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
-                active={activeTab === "finances"} 
-                onClick={() => setActiveTab("finances")} 
-                icon={<Wallet size={18} />} 
-                label="Finanzas" 
-              />
-            )}
-            <NavItem 
-              dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
-              active={activeTab === "ai"} 
+            <NavItem
+              dark={getContrastColor(primaryColor || "#4f46e5") === "white"}
+              active={activeTab === "ai"}
               onClick={() => setActiveTab("ai")} 
               icon={<BrainCircuit size={18} />} 
               label="Asistente IA" 
@@ -1732,16 +1750,6 @@ const handleDownloadInvoice = () => {
                   activeBranchId={activeBranchId}
                   branches={branches}
                   currentStore={currentStore}
-                />
-              )}
-              {activeTab === "finances" && isAdmin && (
-                <FinancesPage
-                  expenses={expenses}
-                  analytics={analytics}
-                  products={products}
-                  sales={sales}
-                  onAddExpense={handleAddExpense}
-                  onDeleteExpense={handleDeleteExpense}
                 />
               )}
               {activeTab === "ai" && (

@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import emailjs from "@emailjs/browser";
-import { SaleRecord, SaleItem, Store, Customer } from "../types";
+import { SaleRecord, SaleItem, Store, Customer, ID_TYPE_SHORT } from "../types";
 
 /**
  * Servicio de facturación
@@ -200,13 +200,16 @@ export const generateInvoicePdf = (payload: InvoicePdfPayload): jsPDF => {
   doc.line(14, 45, 196, 45);
 
   // ─── DATOS DEL CLIENTE ────────────────────────────────────────────
+  const idTypeLabel = ID_TYPE_SHORT[customer.idType || 'CC'];
+  // Para NIT etiquetamos "Razón Social"; para personas naturales, "Nombre".
+  const nameLabel = customer.idType === 'NIT' ? 'Razón Social' : 'Nombre';
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.text("CLIENTE", 14, 53);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.text(`Nombre: ${customer.fullName}`, 14, 60);
-  doc.text(`Cédula: ${customer.idNumber}`, 14, 66);
+  doc.text(`${nameLabel}: ${customer.fullName}`, 14, 60);
+  doc.text(`${idTypeLabel}: ${customer.idNumber}`, 14, 66);
   if (customer.phone) doc.text(`Teléfono: ${customer.phone}`, 14, 72);
   if (customer.email) doc.text(`Email: ${customer.email}`, 110, 60);
   if (customer.address) doc.text(`Dirección: ${customer.address}`, 110, 66);

@@ -7,13 +7,18 @@ import {
   ShieldCheck,
   Zap,
   BarChart3,
-  Globe
+  Globe,
+  Mail,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 
 interface LoginPageProps {
   setAuthView: (v: "login" | "onboarding") => void;
@@ -24,6 +29,7 @@ interface LoginPageProps {
   isAuthLoading: boolean;
   handleEmailLogin: (e: React.FormEvent) => void;
   handleGoogleLogin: () => void;
+  handlePasswordReset: (email: string) => Promise<void>;
 }
 
 export function LoginPage({
@@ -35,7 +41,33 @@ export function LoginPage({
   isAuthLoading,
   handleEmailLogin,
   handleGoogleLogin,
+  handlePasswordReset,
 }: LoginPageProps) {
+  // ── Diálogo de recuperación de contraseña ──────────────────────────
+  const [isResetOpen, setIsResetOpen] = React.useState(false);
+  const [resetEmail, setResetEmail] = React.useState("");
+  const [resetState, setResetState] = React.useState<'idle' | 'sending' | 'sent'>('idle');
+  const [resetError, setResetError] = React.useState("");
+
+  const openReset = () => {
+    setResetEmail(authEmail || "");
+    setResetState('idle');
+    setResetError("");
+    setIsResetOpen(true);
+  };
+
+  const submitReset = async () => {
+    setResetError("");
+    setResetState('sending');
+    try {
+      await handlePasswordReset(resetEmail);
+      setResetState('sent');
+    } catch (err: any) {
+      setResetError(err?.message || "No se pudo enviar el correo");
+      setResetState('idle');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row overflow-hidden font-sans">
       {/* Visual Side (Desktop) */}
@@ -136,6 +168,14 @@ export function LoginPage({
                 <div className="space-y-2">
                   <div className="flex justify-between items-center ml-1">
                     <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Contraseña</Label>
+                    <button
+                      type="button"
+                      onClick={openReset}
+                      disabled={isAuthLoading}
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-500 transition-colors disabled:opacity-50"
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
                   </div>
                   <Input
                     type="password"
@@ -203,6 +243,108 @@ export function LoginPage({
           </div>
         </div>
       </div>
+
+      {/* Diálogo de recuperación de contraseña */}
+      <Dialog
+        open={isResetOpen}
+        onOpenChange={(open) => {
+          if (!open && resetState !== 'sending') {
+            setIsResetOpen(false);
+            // Reset al cerrar para que la próxima apertura arranque limpia
+            setTimeout(() => { setResetState('idle'); setResetError(""); }, 200);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[440px]">
+          {resetState === 'sent' ? (
+            <>
+              <DialogHeader>
+                <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-2">
+                  <CheckCircle2 className="text-emerald-600" size={28} />
+                </div>
+                <DialogTitle className="text-center">Revisa tu correo</DialogTitle>
+                <DialogDescription className="text-center">
+                  Si existe una cuenta asociada a <strong className="text-slate-700">{resetEmail}</strong>, recibirás un enlace para restablecer tu contraseña en unos minutos.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-xs text-slate-500 leading-relaxed">
+                <p className="font-semibold text-slate-700 mb-1">¿No te llega?</p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  <li>Revisa la carpeta de spam o promociones.</li>
+                  <li>Si tu cuenta es solo de Google, no recibirás el correo — usa el botón "Google Account".</li>
+                  <li>El enlace caduca después de un tiempo, vuelve a solicitarlo si es necesario.</li>
+                </ul>
+              </div>
+              <DialogFooter>
+                <Button
+                  onClick={() => setIsResetOpen(false)}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl"
+                >
+                  Entendido
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <div className="mx-auto w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center mb-2">
+                  <Mail className="text-indigo-600" size={26} />
+                </div>
+                <DialogTitle className="text-center">Recuperar contraseña</DialogTitle>
+                <DialogDescription className="text-center">
+                  Te enviaremos un enlace a tu correo para que crees una nueva contraseña.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 py-2">
+                <Label htmlFor="reset-email" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Email de tu cuenta
+                </Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  placeholder="tu@correo.com"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  disabled={resetState === 'sending'}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      submitReset();
+                    }
+                  }}
+                  autoFocus
+                  className="h-11 bg-slate-50 border-slate-200 rounded-xl"
+                />
+                {resetError && <p className="text-xs text-rose-600">{resetError}</p>}
+                <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
+                  Solo aplica si tu cuenta se creó con email y contraseña. Si entras con Google, usa el botón "Google Account".
+                </p>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsResetOpen(false)}
+                  disabled={resetState === 'sending'}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={submitReset}
+                  disabled={resetState === 'sending' || !resetEmail.trim()}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white"
+                >
+                  {resetState === 'sending' ? (
+                    <RefreshCw size={16} className="animate-spin" />
+                  ) : (
+                    "Enviar enlace"
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
