@@ -46,7 +46,7 @@ import { CustomerForm } from "./components/CustomerForm";
 import { PaymentMethodDialog } from "./components/PaymentMethodDialog"; // 🆕
 import { SaleConfirmationDialog } from "./components/SaleConfirmationDialog";
 import {
-  TAX_RATE, generateInvoiceNumber, generateInvoicePdf, calculateTotalsFromItems,
+  generateInvoiceNumber, generateInvoicePdf, calculateTotalsFromItems,
   downloadInvoicePdf, sendInvoiceByEmail, type InvoicePdfPayload,
 } from "./lib/invoiceService";
 import { uploadInvoicePdf, uploadStoreLogo } from "./lib/supabase";
@@ -125,7 +125,13 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
   const isActivatingMember = React.useRef(false);
 
   const [salesDateFilter, setSalesDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [salesRangeType, setSalesRangeType] = useState<'day' | 'week' | 'month'>('day');
+  const [salesRangeType, setSalesRangeType] = useState<'day' | 'week' | 'month' | 'custom'>('day');
+  // Rango personalizado — default: últimos 30 días
+  const [salesDateFrom, setSalesDateFrom] = useState<string>(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [salesDateTo, setSalesDateTo] = useState<string>(new Date().toISOString().split('T')[0]);
   const [lastSync, setLastSync] = useState<Date>(new Date());
 
   const [restockProductId, setRestockProductId] = useState<string>("");
@@ -901,6 +907,10 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
     for (const row of rows) {
       try {
         const id = Math.random().toString(36).substr(2, 9);
+        // Categoría IVA — validamos contra el enum. Si viene vacía o inválida → 'general'.
+        const rawTax = String(row.taxCategory || '').toLowerCase().trim();
+        const taxCategory: TaxCategory =
+          rawTax in TAX_CATEGORY_RATES ? (rawTax as TaxCategory) : 'general';
         const newProduct: Product = {
           id,
           storeId: currentStore.id,
@@ -913,6 +923,8 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
           category: row.category || 'General',
           minStockLevel: Number(row.minStockLevel) || 5,
           lastUpdated: new Date().toISOString(),
+          taxCategory,
+          taxRate: TAX_CATEGORY_RATES[taxCategory],
         };
         await setDoc(doc(db, "stores", currentStore.id, "products", id), newProduct);
         count++;
@@ -1056,6 +1068,9 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       const totalAmount = cart.reduce((acc, item) => acc + item.totalPrice, 0);
       // Calculamos línea por línea respetando el IVA de cada producto.
       const totals = calculateTotalsFromItems(cart);
+      // Tasa efectiva de la venta: si hay mezcla de productos con distinta tarifa,
+      // refleja el promedio real (taxAmount/subtotal) en lugar de un 19% fijo.
+      const effectiveTaxRate = totals.subtotal > 0 ? totals.taxAmount / totals.subtotal : 0;
       const saleId = `sale_${Date.now()}`;
       const invoiceNumber = generateInvoiceNumber(sales.length);
       const cleanCustomer: Customer = {
@@ -1067,7 +1082,7 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       const newSale: SaleRecord = {
   id: saleId, storeId: currentStore.id, items: cart, totalAmount,
   date: new Date().toISOString(), userId: user.uid, customer: cleanCustomer,
-  subtotal: totals.subtotal, taxRate: TAX_RATE, taxAmount: totals.taxAmount,
+  subtotal: totals.subtotal, taxRate: effectiveTaxRate, taxAmount: totals.taxAmount,
   invoiceNumber, emailSent: false,
   payments, // 🆕 guardamos los pagos en Firestore
 };
@@ -1710,6 +1725,10 @@ const handleDownloadInvoice = () => {
                   setSalesDateFilter={setSalesDateFilter}
                   salesRangeType={salesRangeType}
                   setSalesRangeType={setSalesRangeType}
+                  salesDateFrom={salesDateFrom}
+                  setSalesDateFrom={setSalesDateFrom}
+                  salesDateTo={salesDateTo}
+                  setSalesDateTo={setSalesDateTo}
                   activeBranchId={activeBranchId}
                   branches={branches}
                   currentStore={currentStore}

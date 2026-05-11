@@ -16,10 +16,10 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Search, Edit2, Trash2, AlertTriangle, Plus, Sparkles, Camera, Loader2, Upload, FileSpreadsheet, RefreshCw, Download, Receipt } from "lucide-react";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, generateProductCode } from "@/lib/formatters";
 import { Product, TaxCategory, TAX_CATEGORY_LABELS, TAX_CATEGORY_RATES } from "@/types";
 import { analyzeProductImage, suggestProductTax } from "@/lib/inventoryService";
-import { downloadProductTemplate } from "@/components/ExcelExport";
+import { downloadProductTemplate, downloadProductTemplateWithData } from "@/components/ExcelExport";
 import { toast } from "sonner";
 
 interface ImportRow {
@@ -31,6 +31,7 @@ interface ImportRow {
   costPrice?: number;
   quantity?: number;
   minStockLevel?: number;
+  taxCategory?: string;
 }
 
 const COLUMN_MAP: Record<string, keyof ImportRow> = {
@@ -43,6 +44,9 @@ const COLUMN_MAP: Record<string, keyof ImportRow> = {
   'stock': 'quantity', 'cantidad': 'quantity', 'quantity': 'quantity', 'inventario': 'quantity',
   'stock mínimo': 'minStockLevel', 'stock minimo': 'minStockLevel',
   'mínimo': 'minStockLevel', 'minimo': 'minStockLevel', 'min stock': 'minStockLevel', 'min': 'minStockLevel',
+  // IVA: la plantilla acepta el slug DIAN — general/reducido/exento/excluido
+  'categoría iva': 'taxCategory', 'categoria iva': 'taxCategory',
+  'iva': 'taxCategory', 'tax': 'taxCategory', 'tax category': 'taxCategory',
 };
 
 interface ProductsPageProps {
@@ -74,6 +78,10 @@ export function ProductsPage({
   const [isImporting, setIsImporting] = React.useState(false);
   const [taxCategory, setTaxCategory] = React.useState<TaxCategory>('general');
   const [isSuggestingTax, setIsSuggestingTax] = React.useState(false);
+  // Código auto-generado: se calcula al perder foco del nombre y se conserva
+  // durante toda la sesión del dialog para que el preview = el código que
+  // realmente se guardará (la parte aleatoria es estable, no muta en submit).
+  const [autoCode, setAutoCode] = React.useState<string>('');
   // Producto pendiente de confirmar para borrar (null = cerrado)
   const [productToDelete, setProductToDelete] = React.useState<Product | null>(null);
 
@@ -96,6 +104,19 @@ export function ProductsPage({
   React.useEffect(() => {
     if (isAddDialogOpen) suggestedKeysRef.current.clear();
   }, [isAddDialogOpen]);
+
+  // Sincroniza el código preview al cambiar el contexto del dialog.
+  // - Edición: muestra el código existente del producto (no se regenera).
+  // - Nuevo: si la IA ya completó un nombre, generamos un código provisional.
+  React.useEffect(() => {
+    if (editingProduct) {
+      setAutoCode(editingProduct.code);
+    } else if (formValues.name) {
+      setAutoCode(generateProductCode(formValues.name));
+    } else {
+      setAutoCode('');
+    }
+  }, [editingProduct?.id, formValues.name]);
 
   /**
    * Lógica común de sugerencia. `silent`=true (uso automático): solo avisa si
@@ -148,6 +169,9 @@ export function ProductsPage({
   const handleNameBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const name = e.currentTarget.value.trim();
     if (name.length < 3) return;
+    // Genera código preview en cuanto haya nombre. Solo en producto nuevo
+    // — al editar, el código existente permanece intacto.
+    if (!editingProduct) setAutoCode(generateProductCode(name));
     // Si está editando un producto que ya tiene categoría tributaria, no machacamos
     if (editingProduct?.taxCategory) return;
     const fd = new FormData(formRef.current!);
@@ -387,10 +411,29 @@ export function ProductsPage({
                     size="sm"
                     className="text-slate-400 hover:text-slate-600 h-9 gap-1.5"
                     onClick={downloadProductTemplate}
-                    title="Descargar plantilla de importación"
+                    title="Plantilla vacía con ejemplos — útil para crear catálogo desde cero"
                   >
                     <Download size={14} />
-                    Plantilla
+                    Plantilla vacía
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-brand-primary hover:text-brand-secondary h-9 gap-1.5"
+                    onClick={() => {
+                      if (filteredProducts.length === 0) {
+                        toast.error("No hay productos para exportar");
+                        return;
+                      }
+                      downloadProductTemplateWithData(filteredProducts);
+                      toast.success(`Plantilla con ${filteredProducts.length} producto${filteredProducts.length !== 1 ? 's' : ''} descargada`);
+                    }}
+                    disabled={filteredProducts.length === 0}
+                    title="Plantilla pre-llenada con los productos del filtro actual — útil para editar en bloque"
+                  >
+                    <FileSpreadsheet size={14} />
+                    Exportar catálogo
                   </Button>
 
                   <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
@@ -438,9 +481,25 @@ export function ProductsPage({
                             <Label htmlFor="brand" className="text-right">Marca</Label>
                             <Input id="brand" name="brand" defaultValue={editingProduct?.brand || formValues.brand} className="col-span-3" placeholder="Ej: Nestlé" />
                           </div>
+                          {/* Código: automático. Sólo se muestra como preview no editable.
+                              El submit lee el hidden input. */}
+                          <input type="hidden" name="code" value={autoCode} />
                           <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="code" className="text-right">Código</Label>
-                            <Input id="code" name="code" defaultValue={editingProduct?.code} className="col-span-3" placeholder="Opcional — se genera automático" />
+                            <Label className="text-right">Código</Label>
+                            <div className="col-span-3 flex items-center gap-2">
+                              {autoCode ? (
+                                <span className="font-mono text-sm font-bold text-brand-secondary bg-indigo-50 px-3 py-1.5 rounded-lg">
+                                  {autoCode}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400 italic">
+                                  Escribe el nombre y se generará automáticamente
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-400">
+                                {editingProduct ? '(no editable)' : 'auto'}
+                              </span>
+                            </div>
                           </div>
                           {/* ── Categoría con autocomplete ────────────────────
                               Usamos <datalist> nativo: muestra las categorías ya

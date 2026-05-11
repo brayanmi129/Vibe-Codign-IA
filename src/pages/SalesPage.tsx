@@ -7,11 +7,17 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, ShoppingCart, DollarSign, TrendingUp, Download, Eye, MapPin, Phone, User as UserIcon, MessageCircle } from "lucide-react";
+import {
+  Calendar, ShoppingCart, DollarSign, TrendingUp, Download, Eye, User as UserIcon,
+  MessageCircle, Receipt, FileSpreadsheet,
+} from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency } from "@/lib/formatters";
-import { downloadInvoicePdf } from "@/lib/invoiceService";
-import { SaleRecord, Branch, Store } from "@/types";
+import { downloadInvoicePdf, calculateTotalsFromItems } from "@/lib/invoiceService";
+import { exportSalesWorkbook } from "@/components/ExcelExport";
+import {
+  SaleRecord, Branch, Store, TaxCategory, TAX_CATEGORY_LABELS, TAX_CATEGORY_RATES,
+} from "@/types";
 import {
   Dialog,
   DialogContent,
@@ -21,12 +27,18 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 
+export type SalesRangeType = 'day' | 'week' | 'month' | 'custom';
+
 interface SalesPageProps {
   sales: SaleRecord[];
   salesDateFilter: string;
   setSalesDateFilter: (v: string) => void;
-  salesRangeType: 'day' | 'week' | 'month';
-  setSalesRangeType: (v: 'day' | 'week' | 'month') => void;
+  salesRangeType: SalesRangeType;
+  setSalesRangeType: (v: SalesRangeType) => void;
+  salesDateFrom?: string;
+  setSalesDateFrom?: (v: string) => void;
+  salesDateTo?: string;
+  setSalesDateTo?: (v: string) => void;
   activeBranchId: string | null;
   branches: Branch[];
   currentStore: Store;
@@ -34,43 +46,100 @@ interface SalesPageProps {
 
 export function SalesPage({
   sales, salesDateFilter, setSalesDateFilter, salesRangeType, setSalesRangeType,
+  salesDateFrom, setSalesDateFrom, salesDateTo, setSalesDateTo,
   activeBranchId, branches, currentStore,
 }: SalesPageProps) {
   const [selectedReceipt, setSelectedReceipt] = React.useState<SaleRecord | null>(null);
 
-  const filteredSales = sales.filter(s => {
-    const saleDate = new Date(s.date);
+  // ── Cálculo del rango efectivo ────────────────────────────────────
+  // Para 'custom' usamos salesDateFrom/salesDateTo. Para los demás, derivamos
+  // del salesDateFilter como antes.
+  const { rangeStart, rangeEnd } = React.useMemo(() => {
     const filterDate = new Date(salesDateFilter);
-    const matchesBranch = !activeBranchId || s.branchId === activeBranchId;
-    if (!matchesBranch) return false;
-    if (salesRangeType === 'day') return s.date.startsWith(salesDateFilter);
-    if (salesRangeType === 'week') {
-      const startOfWeek = new Date(filterDate);
-      startOfWeek.setDate(filterDate.getDate() - filterDate.getDay());
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
-      return saleDate >= startOfWeek && saleDate <= endOfWeek;
+    if (salesRangeType === 'custom' && salesDateFrom && salesDateTo) {
+      const start = new Date(`${salesDateFrom}T00:00:00`);
+      const end = new Date(`${salesDateTo}T23:59:59.999`);
+      return { rangeStart: start, rangeEnd: end };
     }
-    return saleDate.getMonth() === filterDate.getMonth() && saleDate.getFullYear() === filterDate.getFullYear();
-  });
-
-  const totalRevenue = filteredSales.reduce((acc, s) => acc + s.totalAmount, 0);
-  const totalUnits = filteredSales.reduce((acc, s) => acc + s.items.reduce((sum, item) => sum + item.quantity, 0), 0);
-
-  const rangeLabel = (() => {
-    const filterDate = new Date(salesDateFilter);
-    if (salesRangeType === 'day') return "Reporte Diario";
+    if (salesRangeType === 'day') {
+      const start = new Date(`${salesDateFilter}T00:00:00`);
+      const end = new Date(`${salesDateFilter}T23:59:59.999`);
+      return { rangeStart: start, rangeEnd: end };
+    }
     if (salesRangeType === 'week') {
       const start = new Date(filterDate);
       start.setDate(filterDate.getDate() - filterDate.getDay());
+      start.setHours(0, 0, 0, 0);
       const end = new Date(start);
       end.setDate(start.getDate() + 6);
-      return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+      end.setHours(23, 59, 59, 999);
+      return { rangeStart: start, rangeEnd: end };
     }
-    const start = new Date(filterDate.getFullYear(), filterDate.getMonth(), 1);
-    const end = new Date(filterDate.getFullYear(), filterDate.getMonth() + 1, 0);
-    return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+    // month
+    const start = new Date(filterDate.getFullYear(), filterDate.getMonth(), 1, 0, 0, 0, 0);
+    const end = new Date(filterDate.getFullYear(), filterDate.getMonth() + 1, 0, 23, 59, 59, 999);
+    return { rangeStart: start, rangeEnd: end };
+  }, [salesRangeType, salesDateFilter, salesDateFrom, salesDateTo]);
+
+  const filteredSales = React.useMemo(() => {
+    return sales.filter(s => {
+      const saleDate = new Date(s.date);
+      const matchesBranch = !activeBranchId || s.branchId === activeBranchId;
+      if (!matchesBranch) return false;
+      return saleDate >= rangeStart && saleDate <= rangeEnd;
+    });
+  }, [sales, activeBranchId, rangeStart, rangeEnd]);
+
+  // ── Totales del período ───────────────────────────────────────────
+  const periodTotals = React.useMemo(() => {
+    let revenue = 0;
+    let units = 0;
+    let subtotal = 0;
+    let taxAmount = 0;
+    // Acumulador por categoría tributaria — útil para declaración renta
+    const byCategory: Record<string, { base: number; iva: number; ventas: number }> = {};
+
+    for (const sale of filteredSales) {
+      revenue += sale.totalAmount;
+      for (const item of sale.items) {
+        units += item.quantity;
+        const cat: TaxCategory = item.taxCategory || 'general';
+        const rate = item.taxRate ?? TAX_CATEGORY_RATES[cat];
+        const itemSubtotal = item.totalPrice / (1 + rate);
+        const itemTax = item.totalPrice - itemSubtotal;
+        subtotal += itemSubtotal;
+        taxAmount += itemTax;
+        if (!byCategory[cat]) byCategory[cat] = { base: 0, iva: 0, ventas: 0 };
+        byCategory[cat].base += itemSubtotal;
+        byCategory[cat].iva += itemTax;
+        byCategory[cat].ventas += item.totalPrice;
+      }
+    }
+    return {
+      revenue,
+      units,
+      subtotal: Math.round(subtotal),
+      taxAmount: Math.round(taxAmount),
+      byCategory,
+    };
+  }, [filteredSales]);
+
+  const rangeLabel = (() => {
+    if (salesRangeType === 'custom') {
+      if (!salesDateFrom || !salesDateTo) return 'Selecciona un rango';
+      return `${new Date(salesDateFrom).toLocaleDateString()} - ${new Date(salesDateTo).toLocaleDateString()}`;
+    }
+    if (salesRangeType === 'day') return "Reporte Diario";
+    return `${rangeStart.toLocaleDateString()} - ${rangeEnd.toLocaleDateString()}`;
   })();
+
+  const handleExport = () => {
+    if (filteredSales.length === 0) return;
+    const tag = salesRangeType === 'custom'
+      ? `${salesDateFrom}_a_${salesDateTo}`
+      : `${salesRangeType}_${salesDateFilter}`;
+    exportSalesWorkbook(filteredSales, `ventas_${tag}.xlsx`);
+  };
 
   return (
     <motion.div
@@ -81,56 +150,154 @@ export function SalesPage({
       className="space-y-6"
     >
       <Card className="bg-white border-slate-200 shadow-sm">
-        <CardContent className="p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <div className="flex-1 md:flex-none">
-              <Label htmlFor="sales-date" className="text-xs font-semibold text-slate-500 mb-1 block">Fecha de Referencia</Label>
-              <Input
-                id="sales-date"
-                type="date"
-                value={salesDateFilter}
-                onChange={(e) => setSalesDateFilter(e.target.value)}
-                className="h-9 bg-slate-50"
-              />
-            </div>
-            <div className="flex-1 md:flex-none">
+        <CardContent className="p-4 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-end gap-3 w-full md:w-auto flex-wrap">
+            <div>
               <Label className="text-xs font-semibold text-slate-500 mb-1 block">Rango de Reporte</Label>
               <Select value={salesRangeType} onValueChange={(v: any) => setSalesRangeType(v)}>
-                <SelectTrigger className="h-9 w-full md:w-[140px] bg-slate-50">
+                <SelectTrigger className="h-9 w-full md:w-[160px] bg-slate-50">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="day">Día Único</SelectItem>
                   <SelectItem value="week">Esta Semana</SelectItem>
                   <SelectItem value="month">Este Mes</SelectItem>
+                  <SelectItem value="custom">Rango Personalizado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {salesRangeType === 'custom' ? (
+              <>
+                <div>
+                  <Label htmlFor="sales-from" className="text-xs font-semibold text-slate-500 mb-1 block">Desde</Label>
+                  <Input
+                    id="sales-from"
+                    type="date"
+                    value={salesDateFrom || ''}
+                    onChange={(e) => setSalesDateFrom?.(e.target.value)}
+                    className="h-9 bg-slate-50"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="sales-to" className="text-xs font-semibold text-slate-500 mb-1 block">Hasta</Label>
+                  <Input
+                    id="sales-to"
+                    type="date"
+                    value={salesDateTo || ''}
+                    onChange={(e) => setSalesDateTo?.(e.target.value)}
+                    className="h-9 bg-slate-50"
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <Label htmlFor="sales-date" className="text-xs font-semibold text-slate-500 mb-1 block">Fecha de Referencia</Label>
+                <Input
+                  id="sales-date"
+                  type="date"
+                  value={salesDateFilter}
+                  onChange={(e) => setSalesDateFilter(e.target.value)}
+                  className="h-9 bg-slate-50"
+                />
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2 text-slate-500 text-sm">
-            <Calendar size={16} />
-            <span className="font-medium">{rangeLabel}</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-slate-500 text-sm">
+              <Calendar size={16} />
+              <span className="font-medium">{rangeLabel}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+              onClick={handleExport}
+              disabled={filteredSales.length === 0}
+              title="Descarga las ventas del filtro actual con su desglose de IVA"
+            >
+              <FileSpreadsheet size={14} />
+              Exportar Excel
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Unidades Vendidas"
-          value={totalUnits.toString()}
+          value={periodTotals.units.toString()}
           icon={<ShoppingCart className="text-brand-primary" />}
         />
         <StatCard
           title="Ingresos Totales"
-          value={formatCurrency(totalRevenue)}
+          value={formatCurrency(periodTotals.revenue)}
           icon={<DollarSign className="text-emerald-600" />}
         />
         <StatCard
           title="Promedio por Venta"
-          value={formatCurrency(filteredSales.length ? (totalRevenue / filteredSales.length) : 0)}
+          value={formatCurrency(filteredSales.length ? (periodTotals.revenue / filteredSales.length) : 0)}
           icon={<TrendingUp className="text-brand-primary" />}
         />
+        <StatCard
+          title="IVA del Período"
+          value={formatCurrency(periodTotals.taxAmount)}
+          icon={<Receipt className="text-violet-600" />}
+        />
       </div>
+
+      {/* Desglose tributario para declaración de renta */}
+      {Object.keys(periodTotals.byCategory).length > 0 && (
+        <Card className="bg-white border-slate-200 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-bold flex items-center gap-2">
+              <Receipt size={18} className="text-violet-600" />
+              Desglose Tributario (DIAN)
+            </CardTitle>
+            <CardDescription>
+              Base gravable e IVA por categoría — útil para declarar renta y reporte de IVA recaudado.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow>
+                    <TableHead className="font-semibold">Categoría</TableHead>
+                    <TableHead className="text-right font-semibold">Base Gravable</TableHead>
+                    <TableHead className="text-right font-semibold">IVA Recaudado</TableHead>
+                    <TableHead className="text-right font-semibold">Ventas Brutas</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(Object.entries(periodTotals.byCategory) as [TaxCategory, { base: number; iva: number; ventas: number }][])
+                    .sort(([, a], [, b]) => b.ventas - a.ventas)
+                    .map(([cat, v]) => (
+                      <TableRow key={cat}>
+                        <TableCell>
+                          <Badge
+                            variant="secondary"
+                            className={
+                              cat === 'general' ? 'bg-slate-100 text-slate-700' :
+                              cat === 'reducido' ? 'bg-amber-50 text-amber-700' :
+                              cat === 'exento' ? 'bg-sky-50 text-sky-700' :
+                              'bg-violet-50 text-violet-700'
+                            }
+                          >
+                            {TAX_CATEGORY_LABELS[cat]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-slate-600">{formatCurrency(Math.round(v.base))}</TableCell>
+                        <TableCell className="text-right font-semibold text-violet-700">{formatCurrency(Math.round(v.iva))}</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(Math.round(v.ventas))}</TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-6">
         {salesRangeType === 'day' ? (
@@ -150,6 +317,7 @@ export function SalesPage({
                       <TableHead className="font-semibold">Sucursal</TableHead>
                       <TableHead className="font-semibold">Hora</TableHead>
                       <TableHead className="font-semibold">Cant.</TableHead>
+                      <TableHead className="text-right font-semibold">IVA</TableHead>
                       <TableHead className="text-right font-semibold">Total</TableHead>
                       <TableHead className="text-center font-semibold">Acciones</TableHead>
                     </TableRow>
@@ -159,6 +327,7 @@ export function SalesPage({
                       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                       .map((sale) => {
                         const branchName = branches.find(b => b.id === sale.branchId)?.name;
+                        const saleTax = sale.taxAmount ?? calculateTotalsFromItems(sale.items).taxAmount;
                         return (
                           <TableRow key={sale.id}>
                             <TableCell>
@@ -203,6 +372,9 @@ export function SalesPage({
                               {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </TableCell>
                             <TableCell>{(sale.items || []).reduce((acc, i) => acc + i.quantity, 0)}</TableCell>
+                            <TableCell className="text-right text-violet-700 text-xs font-medium">
+                              {formatCurrency(saleTax)}
+                            </TableCell>
                             <TableCell className="text-right font-semibold">
                               {formatCurrency(sale.totalAmount)}
                             </TableCell>
@@ -239,7 +411,7 @@ export function SalesPage({
                       })}
                     {filteredSales.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-64 text-center">
+                        <TableCell colSpan={9} className="h-64 text-center">
                           <div className="flex flex-col items-center gap-3 py-6">
                             <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center">
                               <ShoppingCart size={24} className="text-slate-300" />
@@ -267,15 +439,16 @@ export function SalesPage({
             </CardHeader>
             <CardContent className="p-0">
               {(() => {
-                const grouped = filteredSales.reduce((acc, s) => {
+                type DailyGroup = { date: string; total: number; units: number; iva: number };
+                const grouped: Record<string, DailyGroup> = {};
+                for (const s of filteredSales) {
                   const date = s.date.split('T')[0];
-                  if (!acc[date]) acc[date] = { date, total: 0, units: 0 };
-                  acc[date].total += s.totalAmount;
-                  acc[date].units += (s.items || []).reduce((sum, item) => sum + item.quantity, 0);
-                  return acc;
-                }, {} as Record<string, any>);
-
-                const sortedGrouped = Object.values(grouped).sort((a: any, b: any) => b.date.localeCompare(a.date));
+                  if (!grouped[date]) grouped[date] = { date, total: 0, units: 0, iva: 0 };
+                  grouped[date].total += s.totalAmount;
+                  grouped[date].units += (s.items || []).reduce((sum, item) => sum + item.quantity, 0);
+                  grouped[date].iva += s.taxAmount ?? calculateTotalsFromItems(s.items).taxAmount;
+                }
+                const sortedGrouped: DailyGroup[] = Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date));
 
                 return (
                   <div className="overflow-x-auto">
@@ -284,14 +457,18 @@ export function SalesPage({
                         <TableRow>
                           <TableHead>Fecha</TableHead>
                           <TableHead>Unidades</TableHead>
+                          <TableHead className="text-right">IVA</TableHead>
                           <TableHead className="text-right">Ingresos Totales</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {sortedGrouped.map((group: any) => (
+                        {sortedGrouped.map((group) => (
                           <TableRow key={group.date}>
                             <TableCell className="font-medium">{new Date(group.date).toLocaleDateString()}</TableCell>
                             <TableCell>{group.units}</TableCell>
+                            <TableCell className="text-right text-violet-700 font-medium">
+                              {formatCurrency(Math.round(group.iva))}
+                            </TableCell>
                             <TableCell className="text-right font-bold text-brand-primary">
                               {formatCurrency(group.total)}
                             </TableCell>
@@ -299,7 +476,7 @@ export function SalesPage({
                         ))}
                         {sortedGrouped.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={3} className="h-64 text-center">
+                            <TableCell colSpan={4} className="h-64 text-center">
                               <div className="flex flex-col items-center gap-3 py-6">
                                 <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center">
                                   <Calendar size={24} className="text-slate-300" />
@@ -361,21 +538,30 @@ export function SalesPage({
                   </div>
                 </div>
 
-                <div className="bg-slate-50 p-4 rounded-2xl space-y-2 border border-slate-100">
-                  <div className="flex justify-between items-center text-xs text-slate-500 font-medium tracking-tight">
-                    <span>Subtotal</span>
-                    <span>{formatCurrency(selectedReceipt.subtotal || selectedReceipt.totalAmount / (1 + (selectedReceipt.taxRate || 0)))}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs text-slate-500 font-medium tracking-tight">
-                    <span>IVA (19%)</span>
-                    <span>{formatCurrency(selectedReceipt.taxAmount || 0)}</span>
-                  </div>
-                  <Separator className="bg-slate-200/50 my-1" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-black uppercase text-slate-900">Total</span>
-                    <span className="text-xl font-black text-brand-primary tracking-tighter">{formatCurrency(selectedReceipt.totalAmount)}</span>
-                  </div>
-                </div>
+                {(() => {
+                  // Recalcular para mostrar números correctos incluso en ventas antiguas
+                  // que no tengan subtotal/taxAmount guardados.
+                  const t = calculateTotalsFromItems(selectedReceipt.items);
+                  const subtotal = selectedReceipt.subtotal ?? t.subtotal;
+                  const taxAmount = selectedReceipt.taxAmount ?? t.taxAmount;
+                  return (
+                    <div className="bg-slate-50 p-4 rounded-2xl space-y-2 border border-slate-100">
+                      <div className="flex justify-between items-center text-xs text-slate-500 font-medium tracking-tight">
+                        <span>Subtotal</span>
+                        <span>{formatCurrency(subtotal)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-slate-500 font-medium tracking-tight">
+                        <span>IVA</span>
+                        <span>{formatCurrency(taxAmount)}</span>
+                      </div>
+                      <Separator className="bg-slate-200/50 my-1" />
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-black uppercase text-slate-900">Total</span>
+                        <span className="text-xl font-black text-brand-primary tracking-tighter">{formatCurrency(selectedReceipt.totalAmount)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="space-y-3 pt-2">
                   <div className="flex items-center gap-2 text-slate-400">
@@ -400,8 +586,6 @@ export function SalesPage({
                     variant="outline"
                     className="flex-1 rounded-xl h-10 text-[11px] font-bold uppercase border-slate-200 gap-1.5"
                     onClick={() => {
-                      // Construye mensaje WhatsApp con resumen + link al PDF si existe.
-                      // Si el cliente tiene teléfono → abre chat directo; si no → wa.me sin número (selector de contacto).
                       const lines = [
                         `Hola${selectedReceipt.customer?.fullName ? ` ${selectedReceipt.customer.fullName}` : ''} 👋`,
                         ``,
@@ -417,7 +601,6 @@ export function SalesPage({
                       }
                       const text = encodeURIComponent(lines.join('\n'));
                       const phoneRaw = selectedReceipt.customer?.phone?.replace(/\D/g, '') || '';
-                      // Si el teléfono no tiene código de país, asumimos Colombia (+57)
                       const phone = phoneRaw && phoneRaw.length === 10 ? `57${phoneRaw}` : phoneRaw;
                       const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
                       window.open(url, '_blank', 'noopener,noreferrer');

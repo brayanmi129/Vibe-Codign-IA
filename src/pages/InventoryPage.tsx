@@ -9,9 +9,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RefreshCw, Package, History, Calendar, BrainCircuit, Plus, Search, AlertTriangle, Store } from "lucide-react";
+import { RefreshCw, Package, History, Calendar, BrainCircuit, Plus, Search, AlertTriangle, Store, FileSpreadsheet } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { Product, InventoryStats, RestockRecord, Branch } from "@/types";
+import * as XLSX from 'xlsx';
+import { prepareInventoryForExport } from "@/components/ExcelExport";
 
 interface InventoryPageProps {
   inventoryTab: "status" | "restock";
@@ -42,6 +44,18 @@ export function InventoryPage({
 }: InventoryPageProps) {
   const activeBranch = branches.find(b => b.id === activeBranchId);
   const hasBranches = branches.length > 0;
+
+  // Descarga el inventario respetando el filtro actual (búsqueda + sucursal activa)
+  const handleExportInventory = () => {
+    if (filteredProducts.length === 0) return;
+    const rows = prepareInventoryForExport(filteredProducts);
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+    const tag = activeBranch ? `_${activeBranch.name.replace(/\s+/g, '_')}` : '';
+    const date = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `inventario${tag}_${date}.xlsx`);
+  };
 
   return (
     <motion.div
@@ -102,14 +116,27 @@ export function InventoryPage({
                 <CardTitle className="text-lg font-bold">
                   {activeBranch ? `Stock — ${activeBranch.name}` : 'Resumen de Existencias'}
                 </CardTitle>
-                <div className="relative max-w-xs">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <Input
-                    placeholder="Filtrar stock..."
-                    className="pl-9 h-9 bg-slate-50 border-slate-200"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="relative max-w-xs">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <Input
+                      placeholder="Filtrar stock..."
+                      className="pl-9 h-9 bg-slate-50 border-slate-200"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 h-9"
+                    onClick={handleExportInventory}
+                    disabled={filteredProducts.length === 0}
+                    title="Descarga el inventario con el filtro actual aplicado"
+                  >
+                    <FileSpreadsheet size={14} />
+                    Exportar Excel
+                  </Button>
                 </div>
               </div>
             </CardHeader>
