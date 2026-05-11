@@ -38,7 +38,8 @@ import {
 import {
   Product, SaleItem, SaleRecord, InventoryStats, RestockRecord,
   Store, UserRole, StoreMember, Branch, TempStoreSettings, Expense, InventoryAnalytics,
-  TaxCategory, TAX_CATEGORY_RATES
+  TaxCategory, TAX_CATEGORY_RATES,
+  Permission, hasPermission,
 } from "./types";
 import { LogIn, LogOut, User as UserIcon, Store as StoreIcon, ShieldCheck, Users, Download, UserPlus, Settings, ChevronRight } from "lucide-react";
 import { ExcelExport, prepareSalesForExport, prepareInventoryForExport } from "./components/ExcelExport";
@@ -50,7 +51,7 @@ import {
   downloadInvoicePdf, sendInvoiceByEmail, type InvoicePdfPayload,
 } from "./lib/invoiceService";
 import { uploadInvoicePdf, uploadStoreLogo } from "./lib/supabase";
-import { Customer, PaymentRecord } from "./types";
+import { Customer, PaymentRecord, CustomerRecord, buildCustomerKey } from "./types";
 import { OnboardingWizard, OnboardingData } from "./components/OnboardingWizard";
 import { NavItem } from "./components/NavItem";
 import { generateDemoData } from "./lib/demoData";
@@ -64,6 +65,7 @@ import { ProductsPage } from "./pages/ProductsPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { TeamPage } from "./pages/TeamPage";
 import { SalesPage } from "./pages/SalesPage";
+import { CustomersPage } from "./pages/CustomersPage";
 import { AIPage } from "./pages/AIPage";
 import { NewSalePage } from "./pages/NewSalePage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -84,6 +86,7 @@ export default function App() {
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [restocks, setRestocks] = useState<RestockRecord[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
 
   const [activeTab, setActiveTab] = useState("dashboard");
   const [searchTerm, setSearchTerm] = useState("");
@@ -463,7 +466,7 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
   }, []);
 
   useEffect(() => {
-    if (!user || !currentStore) { setProducts([]); setSales([]); setRestocks([]); setExpenses([]); return; }
+    if (!user || !currentStore) { setProducts([]); setSales([]); setRestocks([]); setExpenses([]); setCustomers([]); return; }
     const unsubProducts = onSnapshot(
       query(collection(db, "stores", currentStore.id, "products"), orderBy("name")),
       (snapshot) => { setProducts(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Product))); setLastSync(new Date()); },
@@ -484,7 +487,12 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       (snapshot) => { setExpenses(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Expense))); setLastSync(new Date()); },
       (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/expenses`)
     );
-    return () => { unsubProducts(); unsubSales(); unsubRestocks(); unsubExpenses(); };
+    const unsubCustomers = onSnapshot(
+      query(collection(db, "stores", currentStore.id, "customers"), orderBy("lastPurchaseAt", "desc")),
+      (snapshot) => { setCustomers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as CustomerRecord))); setLastSync(new Date()); },
+      (error) => handleFirestoreError(error, OperationType.LIST, `stores/${currentStore.id}/customers`)
+    );
+    return () => { unsubProducts(); unsubSales(); unsubRestocks(); unsubExpenses(); unsubCustomers(); };
   }, [user, currentStore]);
 
   useEffect(() => {
@@ -1115,6 +1123,55 @@ const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
       if (activeBranchId) newSale.branchId = activeBranchId;
 
       await setDoc(doc(db, "stores", currentStore.id, "sales", saleId), newSale);
+
+      // ── Upsert del cliente en la colección customers ──────────────
+      // Mantiene una vista agregada (totalPurchases, totalSpent, lastPurchaseAt)
+      // que alimenta la página de Clientes y el autocompletar en facturación.
+      try {
+        const customerKey = buildCustomerKey(cleanCustomer.idType || 'CC', cleanCustomer.idNumber);
+        const customerRef = doc(db, "stores", currentStore.id, "customers", customerKey);
+        const customerSnap = await getDoc(customerRef);
+        const nowIso = new Date().toISOString();
+        if (customerSnap.exists()) {
+          const prev = customerSnap.data() as CustomerRecord;
+          // Solo sobreescribimos datos vacíos del previo si en esta venta vinieron — no perdemos info.
+          const merged: Partial<CustomerRecord> = {
+            fullName: cleanCustomer.fullName,
+            idType: cleanCustomer.idType || 'CC',
+            idNumber: cleanCustomer.idNumber,
+            totalPurchases: prev.totalPurchases + 1,
+            totalSpent: prev.totalSpent + totalAmount,
+            lastPurchaseAt: nowIso,
+            updatedAt: nowIso,
+          };
+          if (cleanCustomer.phone) merged.phone = cleanCustomer.phone;
+          if (cleanCustomer.email) merged.email = cleanCustomer.email;
+          if (cleanCustomer.address) merged.address = cleanCustomer.address;
+          await updateDoc(customerRef, merged);
+        } else {
+          const newCustomer: CustomerRecord = {
+            id: customerKey,
+            storeId: currentStore.id,
+            idType: cleanCustomer.idType || 'CC',
+            idNumber: cleanCustomer.idNumber,
+            fullName: cleanCustomer.fullName,
+            totalPurchases: 1,
+            totalSpent: totalAmount,
+            firstPurchaseAt: nowIso,
+            lastPurchaseAt: nowIso,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            ...(cleanCustomer.phone && { phone: cleanCustomer.phone }),
+            ...(cleanCustomer.email && { email: cleanCustomer.email }),
+            ...(cleanCustomer.address && { address: cleanCustomer.address }),
+          };
+          await setDoc(customerRef, newCustomer);
+        }
+      } catch (err) {
+        // El upsert del cliente no debe abortar la venta. Solo log.
+        console.error('[customers upsert] failed:', err);
+      }
+
       for (const item of cart) {
         const product = products.find(p => p.id === item.productId);
         if (product) {
@@ -1321,7 +1378,13 @@ const handleDownloadInvoice = () => {
   };
 
   const isAdmin = memberRole === "admin";
-  const canEdit = memberRole === "admin" || memberRole === "employee";
+  // Helper para permisos granulares — usado en lugar de chequeos directos de rol
+  // cuando hace falta proteger acciones específicas (no toda la edición).
+  const can = (permission: Permission) => hasPermission(memberRole, permission);
+  // canEdit (legacy): true si puede crear o editar productos. Lo mantenemos
+  // como flag amplia para retrocompat de algunos componentes — pero la UI
+  // usa permisos específicos donde tiene sentido.
+  const canEdit = can('products.create') || can('products.edit');
 
   // ─── Render: Loading ──────────────────────────────────────────────
   if (!isAuthReady) {
@@ -1575,12 +1638,19 @@ const handleDownloadInvoice = () => {
               icon={<Plus size={18} />} 
               label="Nueva Venta" 
             />
-            <NavItem 
-              dark={getContrastColor(primaryColor || "#4f46e5") === "white"} 
-              active={activeTab === "sales"} 
-              onClick={() => setActiveTab("sales")} 
-              icon={<ShoppingCart size={18} />} 
-              label="Ventas" 
+            <NavItem
+              dark={getContrastColor(primaryColor || "#4f46e5") === "white"}
+              active={activeTab === "sales"}
+              onClick={() => setActiveTab("sales")}
+              icon={<ShoppingCart size={18} />}
+              label="Ventas"
+            />
+            <NavItem
+              dark={getContrastColor(primaryColor || "#4f46e5") === "white"}
+              active={activeTab === "customers"}
+              onClick={() => setActiveTab("customers")}
+              icon={<Users size={18} />}
+              label="Clientes"
             />
             <NavItem
               dark={getContrastColor(primaryColor || "#4f46e5") === "white"}
@@ -1641,6 +1711,7 @@ const handleDownloadInvoice = () => {
                    activeTab === "products" ? "Catálogo de Productos" :
                    activeTab === "new-sale" ? "Nueva Venta" :
                    activeTab === "sales" ? "Reporte de Ventas" :
+                   activeTab === "customers" ? "Clientes" :
                    activeTab === "settings" ? "Ajustes de Tienda" :
                    activeTab === "team" ? "Equipo" :
                    "Inteligencia Artificial"}
@@ -1673,6 +1744,10 @@ const handleDownloadInvoice = () => {
                   stats={stats}
                   salesHistoryData={salesHistoryData}
                   onOpenAI={() => setActiveTab("ai")}
+                  sales={sales}
+                  products={products}
+                  members={members}
+                  canViewFinancials={can('financials.view')}
                 />
               )}
               {activeTab === "products" && (
@@ -1684,6 +1759,7 @@ const handleDownloadInvoice = () => {
                   setCategoryFilter={setCategoryFilter}
                   categories={categories}
                   canEdit={canEdit}
+                  canViewFinancials={can('financials.view')}
                   isAddDialogOpen={isAddDialogOpen}
                   setIsAddDialogOpen={setIsAddDialogOpen}
                   editingProduct={editingProduct}
@@ -1752,6 +1828,9 @@ const handleDownloadInvoice = () => {
                   currentStore={currentStore}
                 />
               )}
+              {activeTab === "customers" && (
+                <CustomersPage customers={customers} sales={sales} />
+              )}
               {activeTab === "ai" && (
                 <AIPage
                   products={products}
@@ -1803,6 +1882,7 @@ const handleDownloadInvoice = () => {
   isProcessing={false} /* ya no procesa: solo valida y abre el siguiente modal */
   onCancel={() => setIsCustomerFormOpen(false)}
   onSubmit={handleCustomerSubmit} /* 🆕 abre PaymentMethodDialog */
+  customers={customers}
 />
 {/* 🆕 Modal Método de Pago + Pagos divididos */}
 <PaymentMethodDialog

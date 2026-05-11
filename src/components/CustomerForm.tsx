@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -5,8 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Customer, IdType, ID_TYPE_LABELS } from "../types";
-import { Loader2 } from "lucide-react";
+import { Customer, IdType, ID_TYPE_LABELS, CustomerRecord, buildCustomerKey } from "../types";
+import { Loader2, Sparkles } from "lucide-react";
 
 interface CustomerFormProps {
   open: boolean;
@@ -14,6 +15,19 @@ interface CustomerFormProps {
   isProcessing: boolean;
   onCancel: () => void;
   onSubmit: (customer: Customer) => void;
+  // Catálogo en memoria de clientes ya registrados — permite autocompletar.
+  customers?: CustomerRecord[];
+}
+
+// "Hace X tiempo" — humaniza la fecha de la última compra.
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return 'hoy';
+  if (days === 1) return 'ayer';
+  if (days < 30) return `hace ${days} días`;
+  if (days < 365) return `hace ${Math.floor(days / 30)} meses`;
+  return `hace ${Math.floor(days / 365)} años`;
 }
 
 /**
@@ -31,7 +45,7 @@ const ID_RULES: Record<IdType, { regex: RegExp; minLen: number; example: string;
   NIT: { regex: /^\d+(-\d)?$/,      minLen: 9, example: '900.123.456-7', hint: 'Solo números, opcional dígito de verificación tras "-"', inputMode: 'text' },
 };
 
-export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubmit }: CustomerFormProps) {
+export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubmit, customers = [] }: CustomerFormProps) {
   const [fullName, setFullName] = useState("");
   const [idType, setIdType] = useState<IdType>('CC');
   const [idNumber, setIdNumber] = useState("");
@@ -39,9 +53,52 @@ export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubm
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Match contra customers ya registrados (autocompletar)
+  const [matched, setMatched] = useState<CustomerRecord | null>(null);
 
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
+
+  // Construye un índice rápido por key para lookups O(1)
+  const customersByKey = React.useMemo(() => {
+    const map = new Map<string, CustomerRecord>();
+    for (const c of customers) map.set(c.id, c);
+    return map;
+  }, [customers]);
+
+  // Busca cliente cada vez que cambie tipo o número (mínimo 4 chars)
+  React.useEffect(() => {
+    if (!open) return;
+    const cleaned = idNumber.trim();
+    if (cleaned.length < 4) {
+      setMatched(null);
+      return;
+    }
+    const key = buildCustomerKey(idType, cleaned);
+    const found = customersByKey.get(key);
+    if (found) {
+      setMatched(found);
+    } else {
+      setMatched(null);
+    }
+  }, [idType, idNumber, customersByKey, open]);
+
+  // Aplicar datos del cliente encontrado a los inputs vacíos
+  const applyMatched = () => {
+    if (!matched) return;
+    setFullName(matched.fullName);
+    if (matched.phone) setPhone(matched.phone);
+    if (matched.email) setEmail(matched.email);
+    if (matched.address) setAddress(matched.address);
+  };
+
+  // Auto-aplicar si los campos están vacíos (no machacar lo que ya escribió)
+  React.useEffect(() => {
+    if (matched && !fullName && !phone && !email && !address) {
+      applyMatched();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matched]);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -97,6 +154,7 @@ export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubm
     setAddress("");
     setEmail("");
     setErrors({});
+    setMatched(null);
   };
 
   // Limpia el campo según el tipo: CC/CE dejan solo dígitos, NIT acepta dígitos + un guión
@@ -129,6 +187,32 @@ export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubm
             Total a pagar: <span className="font-bold text-indigo-600">{formatCurrency(totalAmount)}</span>
           </DialogDescription>
         </DialogHeader>
+
+        {matched && (
+          <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-2xl p-3 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-violet-600 flex items-center justify-center flex-shrink-0">
+              <Sparkles size={16} className="text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-violet-900">
+                Cliente conocido — {matched.totalPurchases} compra{matched.totalPurchases !== 1 ? 's' : ''} previa{matched.totalPurchases !== 1 ? 's' : ''}
+              </p>
+              <p className="text-[11px] text-violet-700 leading-relaxed mt-0.5">
+                Última compra {timeAgo(matched.lastPurchaseAt)} · Total histórico {formatCurrency(matched.totalSpent)}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={applyMatched}
+              className="text-violet-700 hover:bg-violet-100 h-7 text-[11px] font-bold"
+              title="Rellenar nombre, teléfono y email con los datos guardados"
+            >
+              Autocompletar
+            </Button>
+          </div>
+        )}
 
         <div className="grid gap-4 py-4">
           {/* Nombre / Razón social */}

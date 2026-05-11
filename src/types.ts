@@ -1,5 +1,51 @@
 export type UserRole = 'admin' | 'employee';
 
+// ── Permisos granulares por rol ───────────────────────────────────
+// admin: control total. employee: solo operación (venta, restock, consulta).
+// Datos financieros (costos, márgenes, utilidad) y configuración quedan
+// restringidos al admin para que un cajero no vea márgenes del negocio.
+export type Permission =
+  | 'products.create'
+  | 'products.edit'        // incluye cambio de precio
+  | 'products.delete'
+  | 'products.import'
+  | 'sales.create'
+  | 'inventory.restock'
+  | 'inventory.view'
+  | 'customers.view'
+  | 'reports.view'
+  | 'financials.view'      // utilidad neta, márgenes, costos, gastos
+  | 'team.manage'
+  | 'settings.manage'
+  | 'branches.manage';
+
+export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
+  admin: [
+    'products.create', 'products.edit', 'products.delete', 'products.import',
+    'sales.create',
+    'inventory.restock', 'inventory.view',
+    'customers.view',
+    'reports.view',
+    'financials.view',
+    'team.manage', 'settings.manage', 'branches.manage',
+  ],
+  employee: [
+    'sales.create',
+    'inventory.restock', 'inventory.view',
+    'customers.view',
+    'reports.view',
+  ],
+};
+
+/**
+ * `role` se acepta null/undefined porque al inicializar la app aún no se ha
+ * resuelto el rol del usuario — en ese momento NADA está permitido.
+ */
+export const hasPermission = (role: UserRole | null | undefined, permission: Permission): boolean => {
+  if (!role) return false;
+  return ROLE_PERMISSIONS[role].includes(permission);
+};
+
 export interface Branch {
   id: string;
   tenantId: string;
@@ -133,6 +179,39 @@ export interface Customer {
   address?: string;       // Opcional
   email?: string;         // Opcional
 }
+
+/**
+ * Registro persistente del cliente — se hace upsert cada vez que el cliente
+ * realiza una compra. Permite autocompletar datos y ver historial.
+ * Key del documento = `${idType}_${idNumberSinSeparadores}` para evitar
+ * duplicados y colisiones entre una cédula y un NIT con el mismo número.
+ */
+export interface CustomerRecord {
+  id: string;
+  storeId: string;
+  idType: IdType;
+  idNumber: string;          // tal como lo digitó el usuario (con guión si NIT)
+  fullName: string;
+  phone?: string;
+  address?: string;
+  email?: string;
+  totalPurchases: number;    // cantidad de ventas
+  totalSpent: number;        // suma de totalAmount
+  firstPurchaseAt: string;
+  lastPurchaseAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Construye la key del documento del cliente en Firestore.
+ * Quita separadores ("-", ".") y normaliza a mayúsculas para que cédula y NIT
+ * del mismo número no colisionen (`CC_1023456789` vs `NIT_900123456`).
+ */
+export const buildCustomerKey = (idType: IdType, idNumber: string): string => {
+  const clean = idNumber.replace(/[-.\s]/g, '').toUpperCase();
+  return `${idType}_${clean}`;
+};
 
 export interface SaleRecord {
   id: string;

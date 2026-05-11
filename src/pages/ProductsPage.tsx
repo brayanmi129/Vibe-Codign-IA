@@ -57,6 +57,8 @@ interface ProductsPageProps {
   setCategoryFilter: (v: string) => void;
   categories: string[];
   canEdit: boolean;
+  // Si false, oculta columnas de costo y margen — info sensible para el dueño.
+  canViewFinancials: boolean;
   isAddDialogOpen: boolean;
   setIsAddDialogOpen: (v: boolean) => void;
   editingProduct: Product | null;
@@ -68,7 +70,7 @@ interface ProductsPageProps {
 
 export function ProductsPage({
   filteredProducts, searchTerm, setSearchTerm, categoryFilter, setCategoryFilter,
-  categories, canEdit, isAddDialogOpen, setIsAddDialogOpen, editingProduct,
+  categories, canEdit, canViewFinancials, isAddDialogOpen, setIsAddDialogOpen, editingProduct,
   setEditingProduct, handleAddProduct, handleDeleteProduct, onImportProducts,
 }: ProductsPageProps) {
   const [isScanning, setIsScanning] = React.useState(false);
@@ -535,13 +537,15 @@ export function ProductsPage({
                               <Input id="price" name="price" type="number" step="1" defaultValue={editingProduct?.price || formValues.price} className="pl-7" required />
                             </div>
                           </div>
-                          <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="costPrice" className="text-right">Precio costo</Label>
-                            <div className="col-span-3 relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">$</span>
-                              <Input id="costPrice" name="costPrice" type="number" step="1" defaultValue={editingProduct?.costPrice} className="pl-7" placeholder="Opcional" />
+                          {canViewFinancials && (
+                            <div className="grid grid-cols-4 items-center gap-4">
+                              <Label htmlFor="costPrice" className="text-right">Precio costo</Label>
+                              <div className="col-span-3 relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">$</span>
+                                <Input id="costPrice" name="costPrice" type="number" step="1" defaultValue={editingProduct?.costPrice} className="pl-7" placeholder="Opcional" />
+                              </div>
                             </div>
-                          </div>
+                          )}
                           {/* ── IVA — Categoría tributaria DIAN ───────────────── */}
                           <div className="grid grid-cols-4 items-start gap-4">
                             <Label className="text-right pt-2 flex items-center justify-end gap-1.5">
@@ -619,8 +623,8 @@ export function ProductsPage({
                   <TableHead className="font-semibold">Marca</TableHead>
                   <TableHead className="font-semibold">Categoría</TableHead>
                   <TableHead className="font-semibold">Precio Venta</TableHead>
-                  <TableHead className="font-semibold">Precio Costo</TableHead>
-                  <TableHead className="font-semibold">Margen</TableHead>
+                  {canViewFinancials && <TableHead className="font-semibold">Precio Costo</TableHead>}
+                  {canViewFinancials && <TableHead className="font-semibold">Margen</TableHead>}
                   <TableHead className="font-semibold">IVA</TableHead>
                   <TableHead className="font-semibold">Stock Mínimo</TableHead>
                   <TableHead className="text-right font-semibold">Acciones</TableHead>
@@ -636,23 +640,27 @@ export function ProductsPage({
                       <Badge variant="secondary" className="bg-slate-100 text-slate-600">{product.category}</Badge>
                     </TableCell>
                     <TableCell className="font-semibold text-slate-700">{formatCurrency(product.price)}</TableCell>
-                    <TableCell className="text-slate-500">
-                      {product.costPrice ? formatCurrency(product.costPrice) : <span className="text-slate-300 italic text-xs">—</span>}
-                    </TableCell>
-                    <TableCell>
-                      {product.costPrice ? (() => {
-                        const margin = ((product.price - product.costPrice) / product.price) * 100;
-                        return (
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                            margin >= 30 ? "bg-emerald-50 text-emerald-700" :
-                            margin >= 15 ? "bg-amber-50 text-amber-700" :
-                            "bg-rose-50 text-rose-700"
-                          }`}>
-                            {margin.toFixed(1)}%
-                          </span>
-                        );
-                      })() : <span className="text-slate-300 italic text-xs">—</span>}
-                    </TableCell>
+                    {canViewFinancials && (
+                      <TableCell className="text-slate-500">
+                        {product.costPrice ? formatCurrency(product.costPrice) : <span className="text-slate-300 italic text-xs">—</span>}
+                      </TableCell>
+                    )}
+                    {canViewFinancials && (
+                      <TableCell>
+                        {product.costPrice ? (() => {
+                          const margin = ((product.price - product.costPrice) / product.price) * 100;
+                          return (
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                              margin >= 30 ? "bg-emerald-50 text-emerald-700" :
+                              margin >= 15 ? "bg-amber-50 text-amber-700" :
+                              "bg-rose-50 text-rose-700"
+                            }`}>
+                              {margin.toFixed(1)}%
+                            </span>
+                          );
+                        })() : <span className="text-slate-300 italic text-xs">—</span>}
+                      </TableCell>
+                    )}
                     <TableCell>
                       {(() => {
                         const cat: TaxCategory = product.taxCategory || 'general';
@@ -698,7 +706,7 @@ export function ProductsPage({
                 ))}
                 {filteredProducts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="h-64 text-center">
+                    <TableCell colSpan={canViewFinancials ? 10 : 8} className="h-64 text-center">
                       <div className="flex flex-col items-center gap-3 py-6">
                         <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center">
                           <Search size={24} className="text-slate-300" />

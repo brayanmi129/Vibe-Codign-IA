@@ -3,23 +3,30 @@ import { motion } from "motion/react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { 
-  AlertTriangle, 
-  TrendingUp, 
-  DollarSign, 
-  ArrowUpRight, 
-  Sparkles, 
-  ShieldCheck, 
+import {
+  AlertTriangle,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  ArrowUpRight,
+  Sparkles,
+  ShieldCheck,
   ChevronRight,
-  ArrowDownCircle
+  ArrowDownCircle,
+  CalendarDays,
+  Award,
+  Clock,
+  Tag,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip,
+  BarChart, Bar,
 } from "recharts";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency } from "@/lib/formatters";
-import { InventoryStats } from "@/types";
+import { InventoryStats, SaleRecord, Product, StoreMember } from "@/types";
 
 interface Analytics {
   todayRevenue: number;
@@ -40,10 +47,144 @@ interface DashboardPageProps {
   stats: InventoryStats;
   salesHistoryData: { date: string; sales: number }[];
   onOpenAI: () => void;
+  // Datos crudos para calcular comparativas en cliente
+  sales: SaleRecord[];
+  products: Product[];
+  members: StoreMember[];
+  // Si false, oculta utilidad neta, gastos, y valor de inventario a precio costo.
+  canViewFinancials: boolean;
 }
 
-export function DashboardPage({ analytics, stats, salesHistoryData, onOpenAI }: DashboardPageProps) {
+// ── Cálculo de comparativas mensual/anual + insights ─────────────────────
+function useDashboardComparatives(sales: SaleRecord[], products: Product[], members: StoreMember[]) {
+  return React.useMemo(() => {
+    const now = new Date();
+    const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+    const endOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    // Mes actual completo (1ro hasta fin de mes)
+    const currMonthStart = startOfMonth(now);
+    const currMonthEnd = endOfMonth(now);
+    // Mes anterior completo
+    const prevMonthStart = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    const prevMonthEnd = endOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    // Mismo mes año anterior
+    const yoyStart = startOfMonth(new Date(now.getFullYear() - 1, now.getMonth(), 1));
+    const yoyEnd = endOfMonth(new Date(now.getFullYear() - 1, now.getMonth(), 1));
+    // "A la fecha" — del 1ro al día de hoy (para comparación justa con mes anterior y YoY)
+    const todayCutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const dayOfMonth = now.getDate();
+
+    let currMonthRev = 0;
+    // Mes anterior "a la fecha" (mismo día del mes) — para comparar justo
+    let prevMonthRevToDate = 0;
+    let prevMonthRevFull = 0;
+    let yoyRevToDate = 0;
+
+    // Top categoría del mes (por monto)
+    const categoryRev: Record<string, number> = {};
+    // Top empleado del mes (por monto)
+    const userRev: Record<string, number> = {};
+    const userUnits: Record<string, number> = {};
+    // Distribución por hora — solo del mes actual
+    const hourlyBuckets: number[] = new Array(24).fill(0);
+
+    // Producto-categoría lookup
+    const productCategory: Record<string, string> = {};
+    for (const p of products) productCategory[p.id] = p.category;
+
+    for (const s of sales) {
+      const d = new Date(s.date);
+      // Mes actual
+      if (d >= currMonthStart && d <= currMonthEnd) {
+        currMonthRev += s.totalAmount;
+        // Categoría
+        for (const item of s.items) {
+          const cat = productCategory[item.productId] || 'Sin categoría';
+          categoryRev[cat] = (categoryRev[cat] || 0) + item.totalPrice;
+        }
+        // Empleado
+        userRev[s.userId] = (userRev[s.userId] || 0) + s.totalAmount;
+        const units = s.items.reduce((acc, i) => acc + i.quantity, 0);
+        userUnits[s.userId] = (userUnits[s.userId] || 0) + units;
+        // Hora
+        hourlyBuckets[d.getHours()] += s.totalAmount;
+      }
+      // Mes anterior "a la fecha" — mismo día numérico
+      if (d >= prevMonthStart && d <= prevMonthEnd) {
+        prevMonthRevFull += s.totalAmount;
+        if (d.getDate() <= dayOfMonth) prevMonthRevToDate += s.totalAmount;
+      }
+      // YoY a la fecha
+      if (d >= yoyStart && d <= yoyEnd && d.getDate() <= dayOfMonth) {
+        yoyRevToDate += s.totalAmount;
+      }
+    }
+
+    // Variaciones
+    const pctChange = (curr: number, prev: number): number | null => {
+      if (prev === 0) return curr > 0 ? 100 : null;
+      return ((curr - prev) / prev) * 100;
+    };
+    const monthChange = pctChange(currMonthRev, prevMonthRevToDate);
+    const yoyChange = pctChange(currMonthRev, yoyRevToDate);
+
+    // Top categoría
+    const sortedCategories = Object.entries(categoryRev).sort((a, b) => b[1] - a[1]);
+    const topCategory = sortedCategories[0] || null;
+    const totalCategoryRev = Object.values(categoryRev).reduce((acc, v) => acc + v, 0);
+    const topCategoryPct = topCategory && totalCategoryRev > 0 ? (topCategory[1] / totalCategoryRev) * 100 : 0;
+
+    // Top empleado
+    const sortedUsers = Object.entries(userRev).sort((a, b) => b[1] - a[1]);
+    const topUserId = sortedUsers[0]?.[0];
+    const topUserRev = sortedUsers[0]?.[1] || 0;
+    const topUserUnits = topUserId ? userUnits[topUserId] || 0 : 0;
+    // Resolver nombre del empleado: members.userId tiene el UID
+    let topUserName = 'Sin datos';
+    if (topUserId) {
+      const member = members.find(m => m.userId === topUserId);
+      topUserName = member?.displayName || member?.email?.split('@')[0] || `Usuario ${topUserId.slice(0, 6)}`;
+    }
+
+    // Hora pico
+    let peakHour = -1;
+    let peakHourRev = 0;
+    hourlyBuckets.forEach((v, i) => {
+      if (v > peakHourRev) { peakHourRev = v; peakHour = i; }
+    });
+    const peakHourLabel = peakHour >= 0
+      ? `${peakHour.toString().padStart(2, '0')}:00 - ${((peakHour + 1) % 24).toString().padStart(2, '0')}:00`
+      : '—';
+
+    // Heatmap horario (para gráfica)
+    const hourlyData = hourlyBuckets.map((v, h) => ({ hour: `${h.toString().padStart(2, '0')}h`, sales: Math.round(v) }));
+
+    return {
+      currMonthRev,
+      prevMonthRevToDate,
+      prevMonthRevFull,
+      yoyRevToDate,
+      monthChange,
+      yoyChange,
+      topCategory,
+      topCategoryPct,
+      topUserName,
+      topUserRev,
+      topUserUnits,
+      peakHour,
+      peakHourRev,
+      peakHourLabel,
+      hourlyData,
+      hasData: currMonthRev > 0,
+    };
+  }, [sales, products, members]);
+}
+
+export function DashboardPage({ analytics, stats, salesHistoryData, onOpenAI, sales, products, members, canViewFinancials }: DashboardPageProps) {
   const recentSalesCount = React.useMemo(() => analytics.notifications.length, [analytics.notifications]);
+  const comp = useDashboardComparatives(sales, products, members);
+  const monthName = new Date().toLocaleDateString('es-CO', { month: 'long' });
   
   return (
     <motion.div
@@ -59,11 +200,15 @@ export function DashboardPage({ analytics, stats, salesHistoryData, onOpenAI }: 
           <p className="text-slate-500 font-medium">El estado actual de tu negocio en tiempo real.</p>
         </div>
         <div className="flex items-center gap-2 bg-white border border-slate-200 p-1.5 rounded-2xl shadow-sm">
-          <div className="px-4 py-2 text-center">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Inventario</p>
-            <p className="text-sm font-bold text-slate-900">{formatCurrency(stats.totalValue)}</p>
-          </div>
-          <Separator orientation="vertical" className="h-8" />
+          {canViewFinancials && (
+            <>
+              <div className="px-4 py-2 text-center">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor Inventario</p>
+                <p className="text-sm font-bold text-slate-900">{formatCurrency(stats.totalValue)}</p>
+              </div>
+              <Separator orientation="vertical" className="h-8" />
+            </>
+          )}
           <div className="px-4 py-2 text-center">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Productos</p>
             <p className="text-sm font-bold text-slate-900">{stats.totalProducts}</p>
@@ -95,37 +240,41 @@ export function DashboardPage({ analytics, stats, salesHistoryData, onOpenAI }: 
             description="vs. semana anterior"
           />
         </div>
-        <div className="md:col-span-3 lg:col-span-3">
-          {(() => {
-            const coverage = analytics.profitCoverage ?? 100;
-            const missing = analytics.productsMissingCost ?? 0;
-            const isPartial = coverage < 100;
-            // Si cobertura = 100 → ganancia confirmada (verde, ShieldCheck).
-            // Si cobertura < 100 → ganancia parcial (warning amber, AlertTriangle) con cuántos productos faltan.
-            return (
-              <StatCard
-                title={isPartial ? `Utilidad Parcial · ${coverage}%` : "Utilidad Neta"}
-                value={formatCurrency(analytics.netProfit)}
-                icon={isPartial
-                  ? <AlertTriangle className="text-amber-600" />
-                  : <ShieldCheck className="text-emerald-600" />}
-                variant={isPartial ? "warning" : "default"}
-                description={isPartial
-                  ? `Faltan precios de costo en ${missing} producto${missing !== 1 ? 's' : ''}`
-                  : "Ganancia real (todos los costos registrados)"}
-              />
-            );
-          })()}
-        </div>
-        <div className="md:col-span-3 lg:col-span-3">
-          <StatCard
-            title="Gastos Totales"
-            value={formatCurrency(analytics.totalExpenses)}
-            icon={<ArrowDownCircle className="text-rose-600" />}
-            variant="default"
-            description="Egresos registrados"
-          />
-        </div>
+        {canViewFinancials && (
+          <div className="md:col-span-3 lg:col-span-3">
+            {(() => {
+              const coverage = analytics.profitCoverage ?? 100;
+              const missing = analytics.productsMissingCost ?? 0;
+              const isPartial = coverage < 100;
+              // Si cobertura = 100 → ganancia confirmada (verde, ShieldCheck).
+              // Si cobertura < 100 → ganancia parcial (warning amber, AlertTriangle) con cuántos productos faltan.
+              return (
+                <StatCard
+                  title={isPartial ? `Utilidad Parcial · ${coverage}%` : "Utilidad Neta"}
+                  value={formatCurrency(analytics.netProfit)}
+                  icon={isPartial
+                    ? <AlertTriangle className="text-amber-600" />
+                    : <ShieldCheck className="text-emerald-600" />}
+                  variant={isPartial ? "warning" : "default"}
+                  description={isPartial
+                    ? `Faltan precios de costo en ${missing} producto${missing !== 1 ? 's' : ''}`
+                    : "Ganancia real (todos los costos registrados)"}
+                />
+              );
+            })()}
+          </div>
+        )}
+        {canViewFinancials && (
+          <div className="md:col-span-3 lg:col-span-3">
+            <StatCard
+              title="Gastos Totales"
+              value={formatCurrency(analytics.totalExpenses)}
+              icon={<ArrowDownCircle className="text-rose-600" />}
+              variant="default"
+              description="Egresos registrados"
+            />
+          </div>
+        )}
 
         {/* Row 2: Charts and AI */}
         <Card className="md:col-span-6 lg:col-span-8 row-span-2 bg-white border-slate-200 shadow-sm overflow-hidden flex flex-col">
@@ -292,6 +441,197 @@ export function DashboardPage({ analytics, stats, salesHistoryData, onOpenAI }: 
           </CardContent>
         </Card>
 
+      </div>
+
+      {/* ── Sección Comparativas ─────────────────────────────────── */}
+      <div className="space-y-4 pt-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-black text-slate-900 tracking-tight">Comparativas del mes</h3>
+            <p className="text-xs text-slate-500 capitalize">
+              {monthName} {new Date().getFullYear()} · datos hasta hoy
+            </p>
+          </div>
+          <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+            Mes en curso
+          </Badge>
+        </div>
+
+        {!comp.hasData ? (
+          <Card className="bg-slate-50 border-slate-200">
+            <CardContent className="p-12 text-center">
+              <CalendarDays size={32} className="mx-auto text-slate-300 mb-3" />
+              <p className="text-sm font-bold text-slate-700">Aún no hay ventas este mes</p>
+              <p className="text-xs text-slate-400 mt-1">Las comparativas aparecerán cuando registres la primera venta del mes.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Comparativa mes a mes */}
+              <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Mes vs mes anterior</p>
+                    {comp.monthChange !== null && (
+                      comp.monthChange >= 0
+                        ? <TrendingUp size={16} className="text-emerald-500" />
+                        : <TrendingDown size={16} className="text-rose-500" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-slate-900 tracking-tight">{formatCurrency(comp.currMonthRev)}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      vs {formatCurrency(comp.prevMonthRevToDate)} a la misma fecha
+                    </p>
+                  </div>
+                  {comp.monthChange !== null && (
+                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold ${
+                      comp.monthChange >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                    }`}>
+                      {comp.monthChange >= 0 ? '+' : ''}{comp.monthChange.toFixed(1)}%
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* YoY (año contra año) */}
+              <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Año vs año</p>
+                    {comp.yoyChange !== null && (
+                      comp.yoyChange >= 0
+                        ? <TrendingUp size={16} className="text-emerald-500" />
+                        : <TrendingDown size={16} className="text-rose-500" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-slate-900 tracking-tight">{formatCurrency(comp.currMonthRev)}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      vs {formatCurrency(comp.yoyRevToDate)} en {monthName} del año pasado
+                    </p>
+                  </div>
+                  {comp.yoyChange !== null ? (
+                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold ${
+                      comp.yoyChange >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                    }`}>
+                      {comp.yoyChange >= 0 ? '+' : ''}{comp.yoyChange.toFixed(1)}%
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 italic">Sin datos del año pasado</span>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Top categoría del mes */}
+              <Card className="bg-gradient-to-br from-violet-50 to-white border-violet-100 shadow-sm overflow-hidden">
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">Top categoría</p>
+                    <Tag size={16} className="text-violet-500" />
+                  </div>
+                  {comp.topCategory ? (
+                    <>
+                      <div>
+                        <p className="text-base font-black text-slate-900 tracking-tight truncate">{comp.topCategory[0]}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {formatCurrency(comp.topCategory[1])}
+                        </p>
+                      </div>
+                      <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold bg-violet-100 text-violet-700">
+                        {comp.topCategoryPct.toFixed(0)}% de las ventas
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">Sin datos</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Top empleado del mes */}
+              <Card className="bg-gradient-to-br from-amber-50 to-white border-amber-100 shadow-sm overflow-hidden">
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Top vendedor</p>
+                    <Award size={16} className="text-amber-500" />
+                  </div>
+                  {comp.topUserRev > 0 ? (
+                    <>
+                      <div>
+                        <p className="text-base font-black text-slate-900 tracking-tight truncate">{comp.topUserName}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {formatCurrency(comp.topUserRev)} · {comp.topUserUnits} uds.
+                        </p>
+                      </div>
+                      <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">
+                        🏆 #1 del mes
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">Sin datos</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Heatmap horario */}
+            <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
+              <CardHeader className="pb-3 border-b border-slate-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base font-bold flex items-center gap-2">
+                      <Clock size={18} className="text-indigo-500" />
+                      Hora pico de ventas
+                    </CardTitle>
+                    <CardDescription>
+                      Distribución de ingresos por hora del día durante {monthName}
+                    </CardDescription>
+                  </div>
+                  {comp.peakHour >= 0 && (
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Hora pico</p>
+                      <p className="text-lg font-black text-indigo-600">{comp.peakHourLabel}</p>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-0 pt-4">
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={comp.hourlyData} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="hour"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }}
+                      interval={1}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }}
+                      tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#fff',
+                        borderRadius: '12px',
+                        border: '1px solid #e2e8f0',
+                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                        padding: '10px',
+                      }}
+                      itemStyle={{ fontSize: '12px', fontWeight: 700, color: '#4f46e5' }}
+                      labelStyle={{ fontSize: '10px', color: '#64748b', marginBottom: '2px', textTransform: 'uppercase', fontWeight: 800 }}
+                      formatter={(v: number) => [formatCurrency(v), 'Ingresos']}
+                    />
+                    <Bar dataKey="sales" fill="#4f46e5" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
     </motion.div>
   );
