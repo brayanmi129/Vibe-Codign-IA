@@ -128,6 +128,14 @@ service cloud.firestore {
         allow read: if hasViewerRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
         allow write: if isStoreOwner(storeId) || hasAdminRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
       }
+
+      // Customers: registro agregado por cliente (upsert en cada venta).
+      // Cualquier miembro de la tienda puede crear/actualizar al facturar (los
+      // employees emiten ventas), y leer para autocompletar / ver el directorio.
+      match /customers/{customerId} {
+        allow read: if hasViewerRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+        allow write: if isStoreOwner(storeId) || hasEmployeeRole(storeId) || isSuperAdmin() || storeId == "stockmaster-ai-demo";
+      }
     }
 
     // ─── Cross-tenant member lookup ───────────────────────────────────

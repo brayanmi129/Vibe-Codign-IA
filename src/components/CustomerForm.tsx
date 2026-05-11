@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Customer, IdType, ID_TYPE_LABELS, CustomerRecord, buildCustomerKey } from "../types";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, Eraser } from "lucide-react";
 
 interface CustomerFormProps {
   open: boolean;
@@ -92,11 +92,15 @@ export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubm
     if (matched.address) setAddress(matched.address);
   };
 
-  // Auto-aplicar si los campos están vacíos (no machacar lo que ya escribió)
+  // Auto-aplicar siempre que aparezca un match nuevo. Solo escribe los campos
+  // para los que el cliente registrado tiene dato — preserva lo que ya esté
+  // tipeado en campos que el match no aporta (p. ej. email si el cliente no lo tenía).
   React.useEffect(() => {
-    if (matched && !fullName && !phone && !email && !address) {
-      applyMatched();
-    }
+    if (!matched) return;
+    setFullName(matched.fullName);
+    if (matched.phone)   setPhone(matched.phone);
+    if (matched.email)   setEmail(matched.email);
+    if (matched.address) setAddress(matched.address);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matched]);
 
@@ -215,23 +219,8 @@ export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubm
         )}
 
         <div className="grid gap-4 py-4">
-          {/* Nombre / Razón social */}
-          <div className="space-y-2">
-            <Label htmlFor="fullName">
-              {idType === 'NIT' ? 'Razón social' : 'Nombre completo'} <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="fullName"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder={idType === 'NIT' ? 'Ej: Comercializadora ABC S.A.S.' : 'Ej: Juan Pérez García'}
-              disabled={isProcessing}
-              autoFocus
-            />
-            {errors.fullName && <p className="text-xs text-red-500">{errors.fullName}</p>}
-          </div>
-
-          {/* Tipo de documento + número */}
+          {/* Tipo de documento + número — primero, así si el cliente ya existe
+              los demás campos se autorrellenan al digitar la cédula/NIT. */}
           <div className="grid grid-cols-[150px_1fr] gap-3">
             <div className="space-y-2">
               <Label htmlFor="idType">Tipo <span className="text-red-500">*</span></Label>
@@ -266,11 +255,27 @@ export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubm
                 placeholder={`Ej: ${ID_RULES[idType].example}`}
                 inputMode={ID_RULES[idType].inputMode}
                 disabled={isProcessing}
+                autoFocus
               />
               {errors.idNumber
                 ? <p className="text-xs text-red-500">{errors.idNumber}</p>
                 : <p className="text-[10px] text-slate-400">{ID_RULES[idType].hint}</p>}
             </div>
+          </div>
+
+          {/* Nombre / Razón social */}
+          <div className="space-y-2">
+            <Label htmlFor="fullName">
+              {idType === 'NIT' ? 'Razón social' : 'Nombre completo'} <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="fullName"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder={idType === 'NIT' ? 'Ej: Comercializadora ABC S.A.S.' : 'Ej: Juan Pérez García'}
+              disabled={isProcessing}
+            />
+            {errors.fullName && <p className="text-xs text-red-500">{errors.fullName}</p>}
           </div>
 
           {/* Teléfono y Email en fila */}
@@ -318,24 +323,37 @@ export function CustomerForm({ open, totalAmount, isProcessing, onCancel, onSubm
           </p>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={onCancel} disabled={isProcessing}>
-            Cancelar
-          </Button>
+        <DialogFooter className="gap-2 sm:gap-0 sm:justify-between">
           <Button
-            onClick={handleSubmit}
+            type="button"
+            variant="ghost"
+            onClick={handleReset}
             disabled={isProcessing}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="text-slate-500 hover:text-red-600 hover:bg-red-50"
+            title="Borra todos los campos por si se autorrellenó por error"
           >
-            {isProcessing ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Procesando...
-              </>
-            ) : (
-              "Continuar al Pago →"
-            )}
+            <Eraser className="w-4 h-4 mr-1.5" />
+            Limpiar
           </Button>
+          <div className="flex flex-col-reverse sm:flex-row gap-2">
+            <Button variant="outline" onClick={onCancel} disabled={isProcessing}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isProcessing}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Procesando...
+                </>
+              ) : (
+                "Continuar al Pago →"
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

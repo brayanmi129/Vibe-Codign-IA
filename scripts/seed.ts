@@ -38,7 +38,7 @@ const auth = getAuth(app);
 const ADMIN_EMAIL    = "admin@stockmaster.ai";
 const ADMIN_PASSWORD = "Admin#123";
 const TENANT_ID      = "stockmaster-ai-demo";
-const STORE_SUBCOLS  = ["products", "sales", "members", "restocks"] as const;
+const STORE_SUBCOLS  = ["products", "sales", "members", "restocks", "customers", "expenses"] as const;
 
 // ── Utilidades ───────────────────────────────────────────────────────────────
 
@@ -186,7 +186,62 @@ const PRODUCTS = [
   { code: "RED-004", name: "Access Point WiFi 6E Mesh EasyMesh",  brand: "TPLinkPro",  category: "Redes & Audio", price:  749000, costPrice:  520000, quantity:  1, minStockLevel: 2 }, // ⚠️ crítico
 ];
 
-// ── 4. Generador de ventas ───────────────────────────────────────────────────
+// ── 4. Clientes ──────────────────────────────────────────────────────────────
+// 15 clientes: 12 personas naturales (CC) + 3 empresas (NIT). Algunos quedarán
+// como "recurrentes" (varias compras) gracias al sesgo en pickCustomer().
+
+type IdType = "CC" | "CE" | "PA" | "NIT";
+
+interface SeedCustomer {
+  idType: IdType;
+  idNumber: string;
+  fullName: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+}
+
+const CUSTOMERS: SeedCustomer[] = [
+  // Personas (CC) — primeros 4 son "VIP" y compran más seguido
+  { idType: "CC", idNumber: "1023456789", fullName: "María Camila Rodríguez", phone: "3001234567", email: "maria.rodriguez@gmail.com",   address: "Calle 100 #15-20, Bogotá" },
+  { idType: "CC", idNumber: "79845612",   fullName: "Andrés Felipe Gómez",     phone: "3109876543", email: "andres.gomez@hotmail.com",    address: "Cra 7 #45-12, Bogotá" },
+  { idType: "CC", idNumber: "1098765432", fullName: "Laura Valentina Pérez",   phone: "3201234567", email: "laura.perez@outlook.com",     address: "Av. Suba #95-40, Bogotá" },
+  { idType: "CC", idNumber: "52345678",   fullName: "Diego Alejandro Martínez",phone: "3057654321", email: "dmartinez@yahoo.com",          address: "Calle 134 #7B-25, Bogotá" },
+  // Personas (CC) — compradores ocasionales
+  { idType: "CC", idNumber: "1015987654", fullName: "Juliana Castro Mejía",    phone: "3158765432", email: "juliana.castro@gmail.com" },
+  { idType: "CC", idNumber: "80123456",   fullName: "Santiago Ramírez León",   phone: "3187654321", email: "sramirez@gmail.com" },
+  { idType: "CC", idNumber: "1144567890", fullName: "Isabella Torres Vargas",  phone: "3001112233", email: "isabella.torres@gmail.com" },
+  { idType: "CC", idNumber: "94567812",   fullName: "Carlos Eduardo Sánchez",  phone: "3142223344",                                       address: "Cra 50 #80-15, Medellín" },
+  { idType: "CC", idNumber: "1067543210", fullName: "Daniela Ospina Rojas",    phone: "3215554433", email: "dani.ospina@gmail.com" },
+  { idType: "CC", idNumber: "71234567",   fullName: "Felipe Augusto Henao",                          email: "fa.henao@hotmail.com" },
+  { idType: "CC", idNumber: "1130987654", fullName: "Valeria Morales Suárez",  phone: "3024445566" },
+  { idType: "CC", idNumber: "10456789",   fullName: "Ricardo Andrés Cárdenas", phone: "3196667788", email: "rcardenas@empresa.co" },
+  // Empresas (NIT)
+  { idType: "NIT", idNumber: "900456789-1", fullName: "TechSolutions S.A.S.",       phone: "6017654321", email: "compras@techsolutions.co", address: "Av. El Dorado #68-30, Bogotá" },
+  { idType: "NIT", idNumber: "830123456-7", fullName: "Distribuidora El Norte Ltda.", phone: "6014567890", email: "facturacion@elnorte.com.co", address: "Calle 26 #92-32, Bogotá" },
+  { idType: "NIT", idNumber: "901234567-2", fullName: "Servicios Empresariales del Valle S.A.", phone: "6027890123", email: "admin@sevalle.co", address: "Av. 6N #28-10, Cali" },
+];
+
+// Igual que types.ts → buildCustomerKey(): quita -, ., espacios y va a MAYÚSCULA.
+function customerKey(c: { idType: IdType; idNumber: string }): string {
+  return `${c.idType}_${c.idNumber.replace(/[-.\s]/g, "").toUpperCase()}`;
+}
+
+// 75 % de las ventas reciben cliente. Los primeros 4 (VIPs) salen 3× más.
+// El resto comparten el peso restante. ~25 % de ventas quedan "consumidor final".
+function pickCustomer(): SeedCustomer | null {
+  if (Math.random() < 0.25) return null;
+  const weights = CUSTOMERS.map((_, i) => (i < 4 ? 3 : 1));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < CUSTOMERS.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return CUSTOMERS[i];
+  }
+  return CUSTOMERS[CUSTOMERS.length - 1];
+}
+
+// ── 5. Generador de ventas ───────────────────────────────────────────────────
 
 interface SaleItem {
   productId: string;
@@ -196,6 +251,15 @@ interface SaleItem {
   totalPrice: number;
 }
 
+interface SaleCustomer {
+  idType: IdType;
+  idNumber: string;
+  fullName: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+}
+
 interface SaleRecord {
   id: string;
   storeId: string;
@@ -203,6 +267,7 @@ interface SaleRecord {
   totalAmount: number;
   userId: string;
   items: SaleItem[];
+  customer?: SaleCustomer;
 }
 
 // Los accesorios baratos se venden más que laptops/smartphones.
@@ -258,17 +323,94 @@ function generateSales(adminUid: string): SaleRecord[] {
         items.reduce((s, i) => s + i.totalPrice, 0).toFixed(2)
       );
 
-      sales.push({
+      const picked = pickCustomer();
+      const sale: SaleRecord = {
         id:          `sale-${String(counter++).padStart(4, "0")}`,
         storeId:     TENANT_ID,
         date,
         totalAmount,
         userId:      adminUid,
         items,
-      });
+      };
+      if (picked) {
+        const c: SaleCustomer = {
+          idType:   picked.idType,
+          idNumber: picked.idNumber,
+          fullName: picked.fullName,
+        };
+        if (picked.phone)   c.phone   = picked.phone;
+        if (picked.email)   c.email   = picked.email;
+        if (picked.address) c.address = picked.address;
+        sale.customer = c;
+      }
+      sales.push(sale);
     }
   }
   return sales;
+}
+
+// ── 4b. Agregador de clientes ────────────────────────────────────────────────
+// Recorre las ventas con `customer` y arma un CustomerRecord por cada uno con
+// totalPurchases, totalSpent, firstPurchaseAt y lastPurchaseAt.
+
+interface CustomerRecord {
+  id: string;
+  storeId: string;
+  idType: IdType;
+  idNumber: string;
+  fullName: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  totalPurchases: number;
+  totalSpent: number;
+  firstPurchaseAt: string;
+  lastPurchaseAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function aggregateCustomers(sales: SaleRecord[]): CustomerRecord[] {
+  const byKey = new Map<string, CustomerRecord>();
+  for (const s of sales) {
+    if (!s.customer) continue;
+    const key = customerKey(s.customer);
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.totalPurchases += 1;
+      existing.totalSpent     += s.totalAmount;
+      if (s.date < existing.firstPurchaseAt) existing.firstPurchaseAt = s.date;
+      if (s.date > existing.lastPurchaseAt)  existing.lastPurchaseAt  = s.date;
+      existing.updatedAt = existing.lastPurchaseAt;
+      // Rellena campos vacíos si esta venta sí los trae
+      if (!existing.phone   && s.customer.phone)   existing.phone   = s.customer.phone;
+      if (!existing.email   && s.customer.email)   existing.email   = s.customer.email;
+      if (!existing.address && s.customer.address) existing.address = s.customer.address;
+    } else {
+      const rec: CustomerRecord = {
+        id:              key,
+        storeId:         TENANT_ID,
+        idType:          s.customer.idType,
+        idNumber:        s.customer.idNumber,
+        fullName:        s.customer.fullName,
+        totalPurchases:  1,
+        totalSpent:      s.totalAmount,
+        firstPurchaseAt: s.date,
+        lastPurchaseAt:  s.date,
+        createdAt:       s.date,
+        updatedAt:       s.date,
+      };
+      if (s.customer.phone)   rec.phone   = s.customer.phone;
+      if (s.customer.email)   rec.email   = s.customer.email;
+      if (s.customer.address) rec.address = s.customer.address;
+      byKey.set(key, rec);
+    }
+  }
+  // Redondea acumulados monetarios para evitar drift de coma flotante
+  for (const rec of byKey.values()) {
+    rec.totalSpent = parseFloat(rec.totalSpent.toFixed(2));
+  }
+  return [...byKey.values()];
 }
 
 // ── 5. Sucursales ─────────────────────────────────────────────────────────────
@@ -401,7 +543,16 @@ async function seedStore(adminUid: string) {
     const branchId = PRODUCT_BRANCH[firstProductId] ?? "branch-centro";
     await setDoc(doc(db, "stores", TENANT_ID, "sales", s.id), { ...s, branchId });
   }
-  console.log(`✅ ${sales.length} ventas generadas (30 días, ~7/día).`);
+  const salesWithCustomer = sales.filter(s => s.customer).length;
+  console.log(`✅ ${sales.length} ventas generadas (30 días, ~7/día) — ${salesWithCustomer} facturadas a clientes registrados.`);
+
+  // ── Clientes (agregado) ─────────────────────────────────────────────────
+  const customers = aggregateCustomers(sales);
+  for (const c of customers) {
+    await setDoc(doc(db, "stores", TENANT_ID, "customers", c.id), c);
+  }
+  const recurring = customers.filter(c => c.totalPurchases >= 2).length;
+  console.log(`✅ ${customers.length} clientes registrados (${recurring} recurrentes).`);
 
   // ── Reposiciones ────────────────────────────────────────────────────────
   for (let i = 0; i < RESTOCKS.length; i++) {
@@ -438,6 +589,7 @@ async function run() {
     console.log(`   Contraseña: ${ADMIN_PASSWORD}`);
     console.log(`   Productos:  ${PRODUCTS.length}`);
     console.log(`   Ventas:     últimos 30 días (~200)`);
+    console.log(`   Clientes:   ${CUSTOMERS.length} en catálogo, ~75% de ventas con cliente`);
     console.log("═══════════════════════════════════════\n");
     process.exit(0);
   } catch (error) {

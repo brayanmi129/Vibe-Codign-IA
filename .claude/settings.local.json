@@ -9,7 +9,15 @@
       "Bash(npx firebase *)",
       "Bash(echo \"EXIT=$?\")",
       "Bash(npx vite *)",
-      "Bash(grep \"^index.*\\\\.js$\")"
+      "Bash(grep \"^index.*\\\\.js$\")",
+      "Bash(pip install *)",
+      "Bash(python3 _gen_entregable2.py)",
+      "Bash(python3 _gen_entregable3.py)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 _gen_falencias.py)",
+      "Bash(libreoffice --version)",
+      "Bash(xxd)",
+      "Bash(python3 *)"
     ]
   }
 }
